@@ -25,6 +25,7 @@ DEFAULT_CONFIG: dict = {
             "name": "General",
             "system_instruction": "",
             "default_model": None,
+            "auto_copy": False,
         },
     ],
 }

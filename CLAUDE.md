@@ -1,0 +1,125 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project shape
+
+A GTK4 launcher window for Ubuntu GNOME (Wayland) that streams replies from the
+official Google Gemini API. `PLAN.md` is the authoritative design doc — read it
+before making structural changes. `README.md` is the user-facing setup.
+
+Three Python modules + a shell wrapper:
+
+- `main.py` — `Gtk.Application` (single-instance via app-id
+  `de.blueworld.GeminiGemShortcut`), `MainWindow` (input, two `Gtk.DropDown`s,
+  expanding response area, multi-turn conversation), `SettingsWindow`
+  (API key + models + Gem notebook tabs). Both windows live here.
+- `gemini_client.py` — `stream_generate()` generator that POSTs to
+  `…/v1beta/models/{MODEL}:streamGenerateContent?alt=sse` and yields text
+  deltas. Raises `GeminiError` for any failure with a human-friendly message.
+- `config.py` — load/save `~/.config/gemini-gem-shortcut/config.json` (chmod
+  0600), default bootstrap, `find_gem()` helper.
+- `run.sh` — what the GNOME keyboard shortcut binds to. `exec`s
+  `.venv/bin/python main.py`.
+
+## Run / develop
+
+```bash
+# System deps (one-time)
+sudo apt install python3-gi gir1.2-gtk-4.0 python3-venv
+
+# Venv — MUST use --system-site-packages so PyGObject (gi) is importable
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements.txt
+
+# Launch (or bind ./run.sh to a GNOME custom shortcut)
+./run.sh
+
+# Headless import smoke test (catches syntax / GTK4 API mistakes
+# without popping a window)
+.venv/bin/python -c "import config, gemini_client, main; print('ok')"
+
+# Brief GUI smoke test (window pops for 2 s, exits 0 if clean)
+timeout --preserve-status 2 ./run.sh
+```
+
+No test suite, no linter config. Smoke tests above are the verification path.
+
+## Architecture notes that aren't obvious from the code
+
+**Threading model.** The GTK main loop owns all UI updates. On submit,
+`MainWindow._submit` spawns a daemon thread that iterates
+`stream_generate(...)` and pushes each delta back via `GLib.idle_add`. The
+worker checks `self.cancel_flag` between tokens so closing the window mid-
+stream stops the loop on the next yield. Never touch GTK widgets from the
+worker thread.
+
+**"Gems" are mimicked, not real.** Google has no official API for the Gems on
+gemini.google.com. Each named Gem in config is just a `system_instruction`
+preset that gets injected into a normal `generateContent` call. Do not add
+code that pretends otherwise (no reverse-engineered web RPC, no
+clipboard+ydotool tricks) without the user's explicit go-ahead — those paths
+were considered and rejected.
+
+**Focus-out close has three gotchas.** The window auto-closes when focus
+leaves it (spotlight-launcher behavior). Implementation:
+
+1. Uses `Gtk.EventControllerFocus` on the window, not `notify::is-active` —
+   the latter fires when a child `Gtk.DropDown` opens its popover, which
+   would close the window the moment you click a dropdown.
+2. The `leave` handler schedules a 200 ms deferred close instead of closing
+   immediately. The paired `enter` handler cancels the pending close. This
+   filters out the transient focus loss when a dropdown popover closes
+   (focus is briefly orphaned before returning to the dropdown widget) —
+   without the debounce, selecting from a dropdown would close the window.
+3. The settings window is a separate toplevel, so opening it fires `leave`.
+   The `_settings_open` flag suppresses the deferred close in that case.
+   `_open_settings` sets the flag; the settings window's `close-request`
+   handler clears it.
+
+**Conversation rollback on errors.** `_show_error` pops the trailing user
+turn off `self.history` so a failed request doesn't poison the next turn's
+context.
+
+**Clipboard paths are two-tier.** `Ctrl+C` is handled at the window level
+(`_copy_response_selection`) so a mouse-selection in the read-only response
+view copies even though the focused widget is the input. Per-Gem
+`auto_copy: bool` triggers a clipboard write in `_finish_stream` with an
+inline "(copied to clipboard)" confirmation. The flag is snapshotted at
+`_submit` time (`self._current_auto_copy`) so editing the Gem mid-stream
+doesn't change behavior for the in-flight reply.
+
+**Don't disable input via `set_sensitive(False)`.** Use `set_editable(False)`
+instead. Turning the focused widget insensitive forces GTK to move focus
+away, and during the transition `contains_focus` on the window briefly goes
+false — tripping the auto-close deferred timer. This was a real regression
+that took a round to find.
+
+## Locked-in constraints (do not regress without asking)
+
+- **Pure Wayland + latest GTK.** Do not reintroduce `GDK_BACKEND=x11`. Do not
+  downgrade to GTK3. The user explicitly chose this.
+- **No client-side window positioning.** GTK4 dropped `move()`, and Wayland
+  doesn't let clients position themselves on Mutter. Bottom-anchored
+  positioning was considered and explicitly deferred. Don't reintroduce it.
+- **No deprecated widgets.** Use `Gtk.DropDown` + `Gtk.StringList`, not
+  `Gtk.ComboBoxText`. The migration was done to silence GTK4 deprecation
+  warnings; don't undo it.
+- **Always-on-top / skip-taskbar.** Dropped in GTK4. The window is a normal
+  window. Don't try to fake these via hacks.
+
+## Config and secrets
+
+- `~/.config/gemini-gem-shortcut/config.json` (mode 0600) holds the API key
+  in plaintext. Migrating to GNOME Keyring via `libsecret` is on the future
+  list but not started.
+- `.gitignore` excludes `config.json` from the repo root defensively — even
+  though the real config lives under `~/.config`, this prevents accidental
+  commits if someone drops a copy at the project root.
+
+## Commit / push
+
+- Per the user's global instructions, **never add `Co-Authored-By` to
+  commits**.
+- The repo is `git@github.com:iboalali/Gemini-Gem-Shortcut.git`, default
+  branch `main`.

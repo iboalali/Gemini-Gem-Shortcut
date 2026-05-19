@@ -71,6 +71,12 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 - `Shift+Enter` — newline in the input
 - `Esc` — close the window (drops the conversation)
 - `Ctrl+,` or click `⚙` — open settings
+- `Ctrl+C` — copy the current selection in the response area to the clipboard.
+  Select text with the mouse first.
+- Each Gem can opt into **automatic copy-to-clipboard** of every full
+  response — toggle *"Copy response to clipboard automatically"* on the
+  Gem's tab in settings.
+- The window auto-closes when it loses focus (spotlight-launcher behavior).
 - Pressing the keyboard shortcut while the window is open just refocuses it
   (single-instance via `GApplication`).
 
@@ -85,8 +91,8 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
   "default_gem": "General",
   "models": ["gemini-3.1-flash-lite", "gemini-3.1-pro", "gemini-3-flash-preview"],
   "gems": [
-    {"name": "General", "system_instruction": "", "default_model": null},
-    {"name": "Code reviewer", "system_instruction": "You are a senior reviewer…", "default_model": "gemini-3.1-pro"}
+    {"name": "General", "system_instruction": "", "default_model": null, "auto_copy": false},
+    {"name": "Translator → DE", "system_instruction": "Translate to German.", "default_model": null, "auto_copy": true}
   ]
 }
 ```

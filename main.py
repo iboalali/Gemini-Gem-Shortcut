@@ -59,6 +59,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.cancel_flag = threading.Event()
         self._thinking_mark = None
         self._settings_open = False
+        self._close_timeout_id: int | None = None
 
         self.set_default_size(WINDOW_WIDTH, -1)
 
@@ -67,8 +68,16 @@ class MainWindow(Gtk.ApplicationWindow):
         win_keys.connect("key-pressed", self._on_window_key_pressed)
         self.add_controller(win_keys)
 
+        # Auto-close on focus-out, but debounce so that a Gtk.DropDown
+        # popover closing (focus is briefly orphaned before returning to the
+        # dropdown widget) doesn't trip the close. The `enter` event cancels
+        # any pending close.
+        focus_ctrl = Gtk.EventControllerFocus()
+        focus_ctrl.connect("leave", self._on_focus_leave)
+        focus_ctrl.connect("enter", self._on_focus_enter)
+        self.add_controller(focus_ctrl)
+
         self.connect("close-request", self._on_close_request)
-        self.connect("notify::is-active", self._on_active_changed)
 
         self._build_ui()
         self._populate_gem_combo()
@@ -208,10 +217,30 @@ class MainWindow(Gtk.ApplicationWindow):
         if keyval == Gdk.KEY_Escape:
             self.close()
             return True
-        if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_comma:
+        ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        if ctrl and keyval == Gdk.KEY_comma:
             self._open_settings()
             return True
+        if ctrl and keyval in (Gdk.KEY_c, Gdk.KEY_C):
+            # If the response view has a selection, copy it to the clipboard.
+            # response_view isn't keyboard-focusable (no cursor, not editable),
+            # so without this the native Ctrl+C in the focused input_view runs
+            # against an empty selection.
+            if self._copy_response_selection():
+                return True
         return False
+
+    def _copy_response_selection(self) -> bool:
+        buf = self.response_view.get_buffer()
+        bounds = buf.get_selection_bounds()
+        if not bounds:
+            return False
+        start, end = bounds
+        text = buf.get_text(start, end, False)
+        if not text:
+            return False
+        self.get_clipboard().set(text)
+        return True
 
     def _on_input_key_pressed(
         self,
@@ -231,15 +260,27 @@ class MainWindow(Gtk.ApplicationWindow):
         self.cancel_flag.set()
         return False
 
-    def _on_active_changed(self, *_: object) -> None:
-        # Close when the window loses focus, like a spotlight launcher.
-        # Suppress while the (transient) settings window is open — settings
-        # steals focus from main, which would otherwise close us immediately.
-        if self.is_active():
-            return
+    def _on_focus_leave(self, *_: object) -> None:
+        # Schedule a deferred close (spotlight-style) but let the next
+        # `enter` cancel it. This filters out transient focus losses caused
+        # by Gtk.DropDown popovers closing.
         if self._settings_open:
             return
+        if self._close_timeout_id is not None:
+            return
+        self._close_timeout_id = GLib.timeout_add(200, self._do_deferred_close)
+
+    def _on_focus_enter(self, *_: object) -> None:
+        if self._close_timeout_id is not None:
+            GLib.source_remove(self._close_timeout_id)
+            self._close_timeout_id = None
+
+    def _do_deferred_close(self) -> bool:
+        self._close_timeout_id = None
+        if self._settings_open:
+            return False
         self.close()
+        return False
 
     # ── submit / stream ─────────────────────────────────────────────────
 
@@ -256,12 +297,17 @@ class MainWindow(Gtk.ApplicationWindow):
         system_instruction = gem.get("system_instruction", "")
         model = _dropdown_get_text(self.model_combo) or self.cfg.get("default_model", "")
         api_key = self.cfg.get("api_key", "")
+        # Snapshot the gem's auto-copy preference at submit time so editing
+        # the gem mid-stream doesn't change behavior for the in-flight reply.
+        self._current_auto_copy = bool(gem.get("auto_copy", False))
 
         self.history.append({"role": "user", "parts": [{"text": text}]})
 
-        # Lock input and show the response area.
+        # Lock input (editable=False blocks typing). We deliberately leave
+        # sensitive=True so the input keeps focus — turning the focused widget
+        # insensitive would force GTK to move focus away, briefly dropping it
+        # out of the window's focus tree and tripping the auto-close.
         self.input_view.set_editable(False)
-        self.input_view.set_sensitive(False)
         buf.set_text("")
         self.response_frame.set_visible(True)
         self._append_user_echo(text)
@@ -297,7 +343,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def _append_user_echo(self, text: str) -> None:
         buf = self.response_view.get_buffer()
         end = buf.get_end_iter()
-        buf.insert_with_tags_by_name(end, f"> {text}\n", "user")
+        buf.insert_with_tags_by_name(end, f"> {text}\n\n", "user")
         self._scroll_to_end()
 
     def _append_thinking(self) -> None:
@@ -331,13 +377,16 @@ class MainWindow(Gtk.ApplicationWindow):
         if full:
             self.history.append({"role": "model", "parts": [{"text": full}]})
             buf = self.response_view.get_buffer()
+            if getattr(self, "_current_auto_copy", False):
+                self.get_clipboard().set(full)
+                end = buf.get_end_iter()
+                buf.insert_with_tags_by_name(end, "\n  (copied to clipboard)", "dim")
             buf.insert(buf.get_end_iter(), "\n\n")
         else:
             if self.history and self.history[-1].get("role") == "user":
                 self.history.pop()
         self._scroll_to_end()
         self.input_view.set_editable(True)
-        self.input_view.set_sensitive(True)
         self.input_view.grab_focus()
         return False
 
@@ -350,7 +399,6 @@ class MainWindow(Gtk.ApplicationWindow):
             self.history.pop()
         self._scroll_to_end()
         self.input_view.set_editable(True)
-        self.input_view.set_sensitive(True)
         self.input_view.grab_focus()
         return False
 
@@ -521,9 +569,14 @@ class SettingsWindow(Gtk.Window):
         default_model_entry.set_text(gem.get("default_model") or "")
         page.append(default_model_entry)
 
+        auto_copy_check = Gtk.CheckButton(label="Copy response to clipboard automatically")
+        auto_copy_check.set_active(bool(gem.get("auto_copy", False)))
+        page.append(auto_copy_check)
+
         page._gem_name_entry = name_entry  # type: ignore[attr-defined]
         page._gem_instr_view = instr_view  # type: ignore[attr-defined]
         page._gem_default_model_entry = default_model_entry  # type: ignore[attr-defined]
+        page._gem_auto_copy_check = auto_copy_check  # type: ignore[attr-defined]
 
         label_text = gem.get("name", "Gem") or "Gem"
         tab_label = Gtk.Label(label=label_text)
@@ -554,7 +607,13 @@ class SettingsWindow(Gtk.Window):
             ibuf = page._gem_instr_view.get_buffer()  # type: ignore[attr-defined]
             instr = ibuf.get_text(ibuf.get_start_iter(), ibuf.get_end_iter(), False)
             dm = page._gem_default_model_entry.get_text().strip() or None  # type: ignore[attr-defined]
-            gems.append({"name": name, "system_instruction": instr, "default_model": dm})
+            auto_copy = page._gem_auto_copy_check.get_active()  # type: ignore[attr-defined]
+            gems.append({
+                "name": name,
+                "system_instruction": instr,
+                "default_model": dm,
+                "auto_copy": auto_copy,
+            })
 
         new_cfg = {
             "api_key": api_key,
