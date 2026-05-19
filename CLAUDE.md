@@ -95,6 +95,15 @@ away, and during the transition `contains_focus` on the window briefly goes
 false — tripping the auto-close deferred timer. This was a real regression
 that took a round to find.
 
+**Close-request must cancel the deferred-close timer and call
+`app.quit()`.** A pending `GLib.timeout_add` source holds a strong ref to
+the bound method (and therefore the window), which keeps the C widget alive
+past destroy. The GApplication's hold count never reaches 0, `app.run()`
+never returns, and zombie processes accumulate every shortcut press. The
+`_on_close_request` handler explicitly removes the source, drops
+`self.app.window`, and calls `self.app.quit()` as belt-and-braces. Don't
+remove any of those three steps.
+
 ## Locked-in constraints (do not regress without asking)
 
 - **Pure Wayland + latest GTK.** Do not reintroduce `GDK_BACKEND=x11`. Do not

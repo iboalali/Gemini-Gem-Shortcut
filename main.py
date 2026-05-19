@@ -257,7 +257,23 @@ class MainWindow(Gtk.ApplicationWindow):
         return False
 
     def _on_close_request(self, *_: object) -> bool:
+        # Stop the in-flight stream.
         self.cancel_flag.set()
+        # Cancel any pending deferred-close timer — its GLib source holds a
+        # strong ref to our bound method (and therefore this window), which
+        # keeps the C widget alive past destroy and prevents the application
+        # from reaching hold-count 0. Without this, repeated open+close
+        # leaves zombie processes piling up.
+        if self._close_timeout_id is not None:
+            GLib.source_remove(self._close_timeout_id)
+            self._close_timeout_id = None
+        # Drop the app's reference to us so a subsequent activation builds
+        # a fresh window instead of presenting a destroyed one.
+        if self.app.window is self:
+            self.app.window = None
+        # Belt-and-braces: explicitly quit the GApplication. Window-tracking
+        # alone is unreliable when GLib sources have held refs to widgets.
+        self.app.quit()
         return False
 
     def _on_focus_leave(self, *_: object) -> None:
