@@ -8,6 +8,10 @@ A small launcher window for Ubuntu GNOME that talks to the Gemini API.
 - Conversation is multi-turn while the window is open. Closing the window resets it.
 - A gear icon opens settings (API key, models, "Gems" = named system-instruction presets).
 
+<img width="1324" height="368" alt="image" src="https://github.com/user-attachments/assets/23676960-cc99-445e-8bff-4a70b91cf659" />
+<img width="1314" height="1776" alt="image" src="https://github.com/user-attachments/assets/39e21e74-e5cd-4611-8742-db0cb08a2c27" />
+
+
 ## Why "Gems" are mimicked, not real
 
 There is no official Google API that targets a real custom Gem on
