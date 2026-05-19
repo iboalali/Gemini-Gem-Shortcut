@@ -63,8 +63,13 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.set_default_size(WINDOW_WIDTH, -1)
 
-        # Window-level key handling (Esc, Ctrl+,).
+        # Window-level key handling (Esc, Ctrl+,, Ctrl+C). CAPTURE phase so
+        # we intercept Ctrl+C before the focused widget's native handler —
+        # otherwise `input_view` (which usually owns focus after streaming
+        # finishes) consumes it with an empty selection and the user's
+        # mouse-selection in `response_view` never gets copied.
         win_keys = Gtk.EventControllerKey()
+        win_keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         win_keys.connect("key-pressed", self._on_window_key_pressed)
         self.add_controller(win_keys)
 
