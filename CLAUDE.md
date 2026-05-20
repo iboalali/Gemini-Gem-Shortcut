@@ -76,6 +76,21 @@ leaves it (spotlight-launcher behavior). Implementation:
    The `_settings_open` flag suppresses the deferred close in that case.
    `_open_settings` sets the flag; the settings window's `close-request`
    handler clears it.
+4. Interactive window moves on Wayland (`xdg_toplevel_move`) grab BOTH
+   pointer and keyboard for the duration of the drag — the focus
+   controller fires `leave` and the window becomes inactive, so neither
+   `is_active()` nor `notify::is-active` can be used to distinguish a
+   move from a real click-outside. The drag *is* preceded by a button
+   press on this window, though, so `MainWindow` registers a CAPTURE-phase
+   `Gtk.GestureClick` (`_on_window_press`) that records
+   `_last_press_time`. When `_on_focus_leave` fires within 1 s of a press,
+   it picks a 5 s deferred-close delay (long enough for a typical drag to
+   complete and `_on_focus_enter` to cancel the timer); otherwise it uses
+   the original 200 ms. CAPTURE phase is required so we observe the press
+   before the CSD titlebar's `Gtk.WindowHandle` claims it. Do NOT replace
+   the press-tracking with `notify::is-active` (gotcha 1) or with checking
+   `is_active()` at deferred-close time (the move makes us inactive, so
+   the check returns False and the close fires anyway).
 
 **Conversation rollback on errors.** `_show_error` pops the trailing user
 turn off `self.history` so a failed request doesn't poison the next turn's

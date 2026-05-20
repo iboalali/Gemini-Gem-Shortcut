@@ -62,6 +62,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._thinking_mark = None
         self._settings_open = False
         self._close_timeout_id: int | None = None
+        self._last_press_time: int = 0  # GLib monotonic µs of the last mouse press on this window
 
         self.set_default_size(WINDOW_WIDTH, -1)
 
@@ -83,6 +84,17 @@ class MainWindow(Gtk.ApplicationWindow):
         focus_ctrl.connect("leave", self._on_focus_leave)
         focus_ctrl.connect("enter", self._on_focus_enter)
         self.add_controller(focus_ctrl)
+
+        # Track mouse presses on the window so `_on_focus_leave` can tell a
+        # drag-initiation from a real click-outside. CAPTURE phase so we see
+        # the press before the CSD titlebar's Gtk.WindowHandle claims it and
+        # initiates the compositor-managed move (Wayland's xdg_toplevel_move,
+        # which steals focus and previously closed the window mid-drag).
+        press_ctrl = Gtk.GestureClick()
+        press_ctrl.set_button(0)  # any mouse button
+        press_ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        press_ctrl.connect("pressed", self._on_window_press)
+        self.add_controller(press_ctrl)
 
         self.connect("close-request", self._on_close_request)
 
@@ -288,18 +300,31 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _on_focus_leave(self, *_: object) -> None:
         # Schedule a deferred close (spotlight-style) but let the next
-        # `enter` cancel it. This filters out transient focus losses caused
-        # by Gtk.DropDown popovers closing.
+        # `enter` cancel it. The debounce filters out transient focus losses
+        # from Gtk.DropDown popovers closing.
         if self._settings_open:
             return
         if self._close_timeout_id is not None:
             return
-        self._close_timeout_id = GLib.timeout_add(200, self._do_deferred_close)
+        # If a press on this window happened in the last second, the focus
+        # loss is almost certainly the start of an interactive window move
+        # (the compositor grabbed pointer + keyboard for xdg_toplevel_move
+        # the moment the user clicked the titlebar). Use a long debounce so
+        # the drag has time to complete and `_on_focus_enter` can cancel us
+        # when the compositor returns focus. Otherwise — no recent press,
+        # so the user clicked outside us — close quickly.
+        now = GLib.get_monotonic_time()
+        recent_press = now - self._last_press_time < 1_000_000  # 1 second
+        delay = 5000 if recent_press else 200
+        self._close_timeout_id = GLib.timeout_add(delay, self._do_deferred_close)
 
     def _on_focus_enter(self, *_: object) -> None:
         if self._close_timeout_id is not None:
             GLib.source_remove(self._close_timeout_id)
             self._close_timeout_id = None
+
+    def _on_window_press(self, _gesture: Gtk.GestureClick, _n_press: int, _x: float, _y: float) -> None:
+        self._last_press_time = GLib.get_monotonic_time()
 
     def _do_deferred_close(self) -> bool:
         self._close_timeout_id = None
