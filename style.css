@@ -222,9 +222,10 @@ button.suggested-action:disabled {
     color: #88a4c0;
 }
 
-/* Settings labels marked with .dim-label. */
+/* Settings labels marked with .dim-label. Brighter than Adwaita's default
+ * secondary-text grey so they stay legible against the dark background. */
 .dim-label {
-    color: #888888;
+    color: #bbbbbb;
 }
 
 /* Entry fields in the settings window. */
