@@ -83,11 +83,17 @@ context.
 
 **Clipboard paths are two-tier.** `Ctrl+C` is handled at the window level
 (`_copy_response_selection`) so a mouse-selection in the read-only response
-view copies even though the focused widget is the input. Per-Gem
-`auto_copy: bool` triggers a clipboard write in `_finish_stream` with an
-inline "(copied to clipboard)" confirmation. The flag is snapshotted at
-`_submit` time (`self._current_auto_copy`) so editing the Gem mid-stream
-doesn't change behavior for the in-flight reply.
+view copies even though the focused widget is the input. The window's key
+controller MUST run on `Gtk.PropagationPhase.CAPTURE`, not the default
+BUBBLE — otherwise `input_view` (which owns focus after streaming finishes)
+consumes Ctrl+C with an empty selection before our handler sees it, and the
+response-view selection is never copied. If `_copy_response_selection`
+returns False (no selection), the handler returns False to let the native
+Ctrl+C on the input proceed. Per-Gem `auto_copy: bool` triggers a clipboard
+write in `_finish_stream` with an inline "(copied to clipboard)"
+confirmation. The flag is snapshotted at `_submit` time
+(`self._current_auto_copy`) so editing the Gem mid-stream doesn't change
+behavior for the in-flight reply.
 
 **Don't disable input via `set_sensitive(False)`.** Use `set_editable(False)`
 instead. Turning the focused widget insensitive forces GTK to move focus
