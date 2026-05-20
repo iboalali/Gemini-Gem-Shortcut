@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import threading
+from pathlib import Path
 
 import gi
 
@@ -15,6 +16,7 @@ from gemini_client import GeminiError, stream_generate  # noqa: E402
 
 APP_ID = "de.blueworld.GeminiGemShortcut"
 WINDOW_WIDTH = 640
+CSS_PATH = Path(__file__).parent / "style.css"
 
 
 def _make_dropdown() -> Gtk.DropDown:
@@ -134,6 +136,7 @@ class MainWindow(Gtk.ApplicationWindow):
         input_frame.set_child(input_scroll)
 
         self.input_view = Gtk.TextView()
+        self.input_view.set_name("input-view")
         self.input_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.input_view.set_left_margin(8)
         self.input_view.set_right_margin(8)
@@ -168,10 +171,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.response_view.set_bottom_margin(6)
         response_scroll.set_child(self.response_view)
 
+        # Text tags don't pick up CSS — properties go straight on Gtk.TextTag.
+        # Colors chosen to read on the dark background defined in style.css.
         buf = self.response_view.get_buffer()
-        buf.create_tag("user", weight=700)
-        buf.create_tag("error", foreground="#c01c28", style=2)  # italic
-        buf.create_tag("dim", foreground="#888888")
+        buf.create_tag("user", weight=700, foreground="#7eb6ff")
+        buf.create_tag("error", foreground="#ff6b6b", style=2)  # italic
+        buf.create_tag("dim", foreground="#9a9a9a")
 
     # ── helpers ─────────────────────────────────────────────────────────
 
@@ -499,6 +504,10 @@ class SettingsWindow(Gtk.Window):
         models_scroll.set_min_content_height(80)
         self.models_view = Gtk.TextView()
         self.models_view.set_wrap_mode(Gtk.WrapMode.NONE)
+        self.models_view.set_left_margin(8)
+        self.models_view.set_right_margin(8)
+        self.models_view.set_top_margin(6)
+        self.models_view.set_bottom_margin(6)
         self.models_view.get_buffer().set_text("\n".join(self.cfg.get("models", [])))
         models_scroll.set_child(self.models_view)
         outer.append(models_scroll)
@@ -581,6 +590,10 @@ class SettingsWindow(Gtk.Window):
         instr_scroll.set_vexpand(True)
         instr_view = Gtk.TextView()
         instr_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        instr_view.set_left_margin(8)
+        instr_view.set_right_margin(8)
+        instr_view.set_top_margin(6)
+        instr_view.set_bottom_margin(6)
         instr_view.get_buffer().set_text(gem.get("system_instruction", "") or "")
         instr_scroll.set_child(instr_view)
         page.append(instr_scroll)
@@ -652,11 +665,27 @@ class GeminiGemApp(Gtk.Application):
     def __init__(self) -> None:
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.window: MainWindow | None = None
+        self._css_loaded = False
 
     def do_activate(self) -> None:  # noqa: N802 (GObject vtable name)
+        self._load_css()
         if self.window is None:
             self.window = MainWindow(self)
         self.window.present()
+
+    def _load_css(self) -> None:
+        # Loaded at activation rather than __init__ because Gdk.Display isn't
+        # available until the app starts. Guarded against repeat activations.
+        if self._css_loaded or not CSS_PATH.exists():
+            return
+        provider = Gtk.CssProvider()
+        provider.load_from_path(str(CSS_PATH))
+        display = Gdk.Display.get_default()
+        if display is not None:
+            Gtk.StyleContext.add_provider_for_display(
+                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+            self._css_loaded = True
 
 
 def main() -> int:

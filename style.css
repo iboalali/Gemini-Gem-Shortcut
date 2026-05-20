@@ -1,0 +1,374 @@
+/* Dark Spotlight-style theme for Gemini Gem Shortcut.
+ *
+ * Loaded once at app startup via Gtk.CssProvider in main.py. Edit and relaunch
+ * to iterate — no Python changes needed unless you add new selectors. */
+
+window {
+    background-color: #1a1a1a;
+    color: #e8e8e8;
+}
+
+/* CSD titlebar drawn by GTK4 on Wayland. Selectors cover both the
+ * `headerbar` widget and the generic .titlebar class fallback. */
+headerbar,
+window > .titlebar {
+    background-color: #1a1a1a;
+    background-image: none;
+    color: #e8e8e8;
+    border-bottom: 1px solid #2a2a2a;
+    box-shadow: none;
+    min-height: 32px;
+}
+
+headerbar windowcontrols button,
+.titlebar windowcontrols button {
+    color: #e8e8e8;
+    background-color: transparent;
+    border: none;
+}
+
+headerbar windowcontrols button:hover,
+.titlebar windowcontrols button:hover {
+    background-color: #2f2f2f;
+}
+
+/* Input + response frames: subtle card on the dark background. */
+frame {
+    background-color: #242424;
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+textview,
+textview text {
+    background-color: transparent;
+    color: #e8e8e8;
+    caret-color: #7eb6ff;
+}
+
+textview text selection {
+    background-color: #3584e4;
+    color: #ffffff;
+}
+
+/* Larger input font for the Spotlight-launcher feel. */
+#input-view,
+#input-view text {
+    font-size: 14pt;
+}
+
+/* Gtk.DropDown trigger button — the clickable "field". The widget tree is:
+ *   dropdown
+ *     └── button
+ *           └── box > (label, image[arrow])
+ * Adwaita paints a gradient (background-image) and box-shadow on every
+ * button, so we must explicitly clear both for the flat dark look. */
+dropdown {
+    background-color: transparent;
+}
+
+dropdown > button {
+    background-color: #2a2a2a;
+    background-image: none;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    box-shadow: none;
+    color: #e8e8e8;
+    padding: 4px 10px;
+    min-height: 28px;
+}
+
+dropdown > button:hover {
+    background-color: #333333;
+    border-color: #4a4a4a;
+}
+
+dropdown > button:active,
+dropdown > button:checked {
+    background-color: #3a3a3a;
+}
+
+dropdown > button:focus,
+dropdown > button:focus-visible {
+    outline: none;
+    border-color: #3584e4;
+}
+
+dropdown > button label,
+dropdown > button image {
+    color: #e8e8e8;
+}
+
+/* Popover opened by Gtk.DropDown. The widget tree is:
+ *   popover
+ *     ├── arrow
+ *     └── contents
+ *           └── scrolledwindow > viewport > listview > row* */
+popover {
+    background-color: transparent;
+}
+
+popover > contents,
+popover > arrow {
+    background-color: #2a2a2a;
+    color: #e8e8e8;
+    border: 1px solid #3a3a3a;
+}
+
+popover > contents {
+    border-radius: 6px;
+    padding: 4px;
+}
+
+popover scrolledwindow,
+popover scrolledwindow viewport,
+popover listview {
+    background-color: transparent;
+    color: #e8e8e8;
+}
+
+popover listview > row {
+    color: #e8e8e8;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+popover listview > row:hover {
+    background-color: #333333;
+}
+
+popover listview > row:selected {
+    background-color: #3584e4;
+    color: #ffffff;
+}
+
+/* Buttons. Adwaita paints `background-image` (gradient) and `box-shadow`
+ * on every button — both must be cleared, or my flat dark `background-color`
+ * is layered *under* the original Adwaita chrome. Variants:
+ *   - default     → + Add Gem, – Remove current, Cancel
+ *   - .flat       → gear icon (set_has_frame(False))
+ *   - .suggested-action → Save
+ * More-specific selectors (`headerbar windowcontrols button`,
+ * `dropdown > button`) keep their existing overrides via specificity. */
+button {
+    background-color: #2a2a2a;
+    background-image: none;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    box-shadow: none;
+    color: #e8e8e8;
+    padding: 4px 12px;
+    min-height: 28px;
+}
+
+button:hover {
+    background-color: #333333;
+    border-color: #4a4a4a;
+}
+
+button:active,
+button:checked {
+    background-color: #3a3a3a;
+}
+
+button:focus,
+button:focus-visible {
+    outline: none;
+    border-color: #3584e4;
+}
+
+button:disabled {
+    color: #666666;
+    background-color: #1f1f1f;
+    border-color: #2a2a2a;
+}
+
+button.flat,
+button.image-button {
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    padding: 4px 8px;
+}
+
+button.flat:hover,
+button.image-button:hover {
+    background-color: #2f2f2f;
+    border: none;
+}
+
+button.suggested-action {
+    background-color: #3584e4;
+    background-image: none;
+    border-color: #3584e4;
+    box-shadow: none;
+    color: #ffffff;
+}
+
+button.suggested-action:hover {
+    background-color: #4a95eb;
+    border-color: #4a95eb;
+}
+
+button.suggested-action:active {
+    background-color: #2a78d8;
+    border-color: #2a78d8;
+}
+
+button.suggested-action:disabled {
+    background-color: #1e4f8a;
+    border-color: #1e4f8a;
+    color: #88a4c0;
+}
+
+/* Settings labels marked with .dim-label. */
+.dim-label {
+    color: #888888;
+}
+
+/* Entry fields in the settings window. */
+entry {
+    background-color: #242424;
+    color: #e8e8e8;
+    border: 1px solid #333;
+    border-radius: 6px;
+}
+
+entry:focus-within {
+    border-color: #3584e4;
+}
+
+entry selection {
+    background-color: #3584e4;
+    color: #ffffff;
+}
+
+/* Settings notebook tabs + page body. The widget tree is:
+ *   notebook > header > tabs > tab+
+ * Adwaita paints a light "selected" background on tab:checked and an
+ * accent indicator — both need explicit overrides for the dark look. */
+notebook,
+notebook header,
+notebook header.top,
+notebook header.bottom {
+    background-color: #1f1f1f;
+    border-color: #2a2a2a;
+}
+
+notebook tab {
+    background-color: transparent;
+    background-image: none;
+    color: #aaaaaa;
+    border: none;
+    box-shadow: none;
+    padding: 6px 12px;
+}
+
+notebook tab:hover {
+    background-color: #2a2a2a;
+    color: #e8e8e8;
+}
+
+notebook tab:checked {
+    background-color: #2a2a2a;
+    background-image: none;
+    color: #e8e8e8;
+    /* Replace Adwaita's accent indicator with our blue underline. */
+    box-shadow: inset 0 -2px 0 #3584e4;
+}
+
+notebook tab > label {
+    color: inherit;
+}
+
+notebook > stack {
+    background-color: #1a1a1a;
+}
+
+/* "Copy response to clipboard automatically" checkbox in settings.
+ * Widget tree: checkbutton > check (the box) + label. */
+checkbutton {
+    color: #e8e8e8;
+}
+
+checkbutton > check {
+    background-color: #2a2a2a;
+    background-image: none;
+    border: 1px solid #4a4a4a;
+    border-radius: 3px;
+    box-shadow: none;
+    min-width: 14px;
+    min-height: 14px;
+}
+
+checkbutton > check:hover {
+    border-color: #5a5a5a;
+}
+
+checkbutton > check:checked {
+    background-color: #3584e4;
+    border-color: #3584e4;
+    color: #ffffff;
+}
+
+/* Tooltips (e.g. the "Gem (system instruction preset)" hint). */
+tooltip,
+tooltip.background {
+    background-color: #2a2a2a;
+    color: #e8e8e8;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+}
+
+/* Subtle scrollbars — slider + the trough it sits in. */
+scrollbar {
+    background-color: transparent;
+}
+
+scrollbar trough {
+    background-color: #1a1a1a;
+    border-radius: 3px;
+}
+
+scrollbar slider {
+    background-color: #444444;
+    border-radius: 3px;
+    min-width: 6px;
+    min-height: 6px;
+}
+
+scrollbar slider:hover {
+    background-color: #5a5a5a;
+}
+
+/* Disabled states for the non-button widgets (button:disabled lives in the
+ * main button block above so all its sub-properties stay co-located). */
+dropdown > button:disabled,
+entry:disabled,
+checkbutton:disabled {
+    color: #666666;
+    background-color: #1f1f1f;
+    border-color: #2a2a2a;
+}
+
+/* Scrolledwindow cards — for the Models and System-instruction textviews in
+ * settings, which aren't wrapped in a Gtk.Frame. Suppressed inside a frame
+ * or popover so input_scroll/response_scroll and the dropdown popover stay
+ * transparent (their parents already provide the surface). */
+scrolledwindow {
+    background-color: #242424;
+    border: 1px solid #333;
+    border-radius: 6px;
+}
+
+scrolledwindow > viewport {
+    background-color: transparent;
+}
+
+frame scrolledwindow,
+popover scrolledwindow {
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+}
