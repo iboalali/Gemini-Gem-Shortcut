@@ -65,6 +65,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self._last_press_time: int = 0  # GLib monotonic µs of the last mouse press on this window
 
         self.set_default_size(WINDOW_WIDTH, -1)
+        # Spotlight-launcher chrome: no titlebar, no min/max/close buttons.
+        # Drag is preserved by wrapping the body in a Gtk.WindowHandle in
+        # `_build_ui` so any non-interactive surface can initiate a move.
+        self.set_decorated(False)
 
         # Window-level key handling (Esc, Ctrl+,, Ctrl+C). CAPTURE phase so
         # we intercept Ctrl+C before the focused widget's native handler —
@@ -87,9 +91,10 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Track mouse presses on the window so `_on_focus_leave` can tell a
         # drag-initiation from a real click-outside. CAPTURE phase so we see
-        # the press before the CSD titlebar's Gtk.WindowHandle claims it and
-        # initiates the compositor-managed move (Wayland's xdg_toplevel_move,
-        # which steals focus and previously closed the window mid-drag).
+        # the press before the body-level Gtk.WindowHandle (wrapping `outer`
+        # in `_build_ui`) claims it and initiates the compositor-managed move
+        # (Wayland's xdg_toplevel_move, which steals focus and previously
+        # closed the window mid-drag).
         press_ctrl = Gtk.GestureClick()
         press_ctrl.set_button(0)  # any mouse button
         press_ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
@@ -108,12 +113,20 @@ class MainWindow(Gtk.ApplicationWindow):
     # ── layout ──────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        # Wrap the whole body in a Gtk.WindowHandle so dragging from any
+        # non-interactive surface initiates a window move (replacement for
+        # the CSD titlebar drag region, since `set_decorated(False)` removed
+        # it). Interactive children (TextView, DropDown, buttons) still
+        # capture their own clicks; only the empty box around them drags.
+        handle = Gtk.WindowHandle()
+        self.set_child(handle)
+
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         outer.set_margin_top(10)
         outer.set_margin_bottom(10)
         outer.set_margin_start(10)
         outer.set_margin_end(10)
-        self.set_child(outer)
+        handle.set_child(outer)
 
         # Top row: gem combo, model combo, gear button.
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)

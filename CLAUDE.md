@@ -87,10 +87,12 @@ leaves it (spotlight-launcher behavior). Implementation:
    it picks a 5 s deferred-close delay (long enough for a typical drag to
    complete and `_on_focus_enter` to cancel the timer); otherwise it uses
    the original 200 ms. CAPTURE phase is required so we observe the press
-   before the CSD titlebar's `Gtk.WindowHandle` claims it. Do NOT replace
-   the press-tracking with `notify::is-active` (gotcha 1) or with checking
-   `is_active()` at deferred-close time (the move makes us inactive, so
-   the check returns False and the close fires anyway).
+   before the body-level `Gtk.WindowHandle` (the one wrapping `outer` in
+   `_build_ui` — added when the CSD titlebar was dropped via
+   `set_decorated(False)`) claims it. Do NOT replace the press-tracking
+   with `notify::is-active` (gotcha 1) or with checking `is_active()` at
+   deferred-close time (the move makes us inactive, so the check returns
+   False and the close fires anyway).
 
 **Conversation rollback on errors.** `_show_error` pops the trailing user
 turn off `self.history` so a failed request doesn't poison the next turn's
