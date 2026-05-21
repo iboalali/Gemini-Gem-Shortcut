@@ -9,8 +9,9 @@ A small launcher window for Ubuntu GNOME that talks to the Gemini API.
 - A gear icon opens settings (API key, models, "Gems" = named system-instruction presets).
 - Drag the window from any empty area to move it.
 
-<img width="1324" height="368" alt="image" src="https://github.com/user-attachments/assets/23676960-cc99-445e-8bff-4a70b91cf659" />
-<img width="1314" height="1776" alt="image" src="https://github.com/user-attachments/assets/39e21e74-e5cd-4611-8742-db0cb08a2c27" />
+<img width="1302" height="308" alt="image" src="https://github.com/user-attachments/assets/11005d36-dc6b-4b75-9d30-31f01ad2dd5a" />
+
+<img width="1304" height="1880" alt="image" src="https://github.com/user-attachments/assets/0bb7c7fa-3ed6-4269-abc5-e5090c85501e" />
 
 
 ## Why "Gems" are mimicked, not real
