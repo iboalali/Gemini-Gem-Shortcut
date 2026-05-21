@@ -69,6 +69,10 @@ class MainWindow(Gtk.ApplicationWindow):
         # Drag is preserved by wrapping the body in a Gtk.WindowHandle in
         # `_build_ui` so any non-interactive surface can initiate a move.
         self.set_decorated(False)
+        # Marks this as the main spotlight window so style.css can make the
+        # toplevel transparent (so its rounded child shows through at the
+        # corners) without affecting the still-decorated SettingsWindow.
+        self.add_css_class("spotlight-window")
 
         # Window-level key handling (Esc, Ctrl+,, Ctrl+C). CAPTURE phase so
         # we intercept Ctrl+C before the focused widget's native handler —

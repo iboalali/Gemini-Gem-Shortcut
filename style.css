@@ -8,6 +8,21 @@ window {
     color: #e8e8e8;
 }
 
+/* Main spotlight window: undecorated (see main.py `set_decorated(False)`),
+ * so we paint the dark fill + rounded corners on the Gtk.WindowHandle that
+ * wraps the body. The toplevel itself must be transparent — otherwise the
+ * compositor draws an opaque rectangle behind the radius and the corners
+ * stay square. SettingsWindow lacks the .spotlight-window class, so it
+ * keeps the plain `window` rule above. */
+window.spotlight-window {
+    background-color: transparent;
+}
+
+window.spotlight-window > windowhandle {
+    background-color: #1a1a1a;
+    border-radius: 12px;
+}
+
 /* CSD titlebar drawn by GTK4 on Wayland. Selectors cover both the
  * `headerbar` widget and the generic .titlebar class fallback. */
 headerbar,
