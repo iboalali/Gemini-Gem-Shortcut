@@ -8,7 +8,7 @@ A GTK4 launcher window for Ubuntu GNOME (Wayland) that streams replies from the
 official Google Gemini API. `PLAN.md` is the authoritative design doc — read it
 before making structural changes. `README.md` is the user-facing setup.
 
-Three Python modules + a shell wrapper:
+Three Python modules + a shell wrapper + a stylesheet:
 
 - `main.py` — `Gtk.Application` (single-instance via app-id
   `de.blueworld.GeminiGemShortcut`), `MainWindow` (input, two `Gtk.DropDown`s,
@@ -21,6 +21,9 @@ Three Python modules + a shell wrapper:
   0600), default bootstrap, `find_gem()` helper.
 - `run.sh` — what the GNOME keyboard shortcut binds to. `exec`s
   `.venv/bin/python main.py`.
+- `style.css` — dark Spotlight-style theme. Loaded once at app activation
+  via `Gtk.CssProvider` (`GeminiGemApp._load_css`) at
+  `STYLE_PROVIDER_PRIORITY_APPLICATION`. Edit and relaunch to iterate.
 
 ## Run / develop
 
@@ -117,6 +120,17 @@ instead. Turning the focused widget insensitive forces GTK to move focus
 away, and during the transition `contains_focus` on the window briefly goes
 false — tripping the auto-close deferred timer. This was a real regression
 that took a round to find.
+
+**Rounded corners need a transparent toplevel.** `MainWindow` is undecorated
+(`set_decorated(False)`), and the rounded dark fill is painted on the
+body-level `Gtk.WindowHandle`, not the toplevel. The `window.spotlight-window`
+rule in `style.css` therefore sets the toplevel `background-color:
+transparent` — otherwise the compositor draws an opaque rectangle behind the
+`border-radius` and the corners stay square. The `.spotlight-window` CSS
+class (added in `MainWindow.__init__`) scopes this to the main window so
+`SettingsWindow` keeps its native decorated chrome. If you add a second
+spotlight-style toplevel, give it the same class; if you make the main
+window decorated again, drop the class and the transparency rule together.
 
 **Close-request must cancel the deferred-close timer and call
 `app.quit()`.** A pending `GLib.timeout_add` source holds a strong ref to

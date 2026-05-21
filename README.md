@@ -3,10 +3,11 @@
 A small launcher window for Ubuntu GNOME that talks to the Gemini API.
 
 - Bind a global keyboard shortcut (e.g. `Ctrl+Alt+G`).
-- Press it → a focused input dialog appears.
+- Press it → a focused, undecorated dark "Spotlight-style" input appears.
 - Type a prompt → press `Enter` → the dialog grows and streams the reply.
 - Conversation is multi-turn while the window is open. Closing the window resets it.
 - A gear icon opens settings (API key, models, "Gems" = named system-instruction presets).
+- Drag the window from any empty area to move it.
 
 <img width="1324" height="368" alt="image" src="https://github.com/user-attachments/assets/23676960-cc99-445e-8bff-4a70b91cf659" />
 <img width="1314" height="1776" alt="image" src="https://github.com/user-attachments/assets/39e21e74-e5cd-4611-8742-db0cb08a2c27" />
