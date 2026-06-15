@@ -91,7 +91,7 @@ Path: `~/.config/gemini-gem-shortcut/config.json` (chmod 0600).
 - Default gem (`Gtk.Entry`).
 - Save writes to config and emits a `saved` signal that the main window subscribes to in order to refresh dropdowns.
 
-**Single instance** — implemented with `Gtk.Application` unique-name `de.blueworld.GeminiGemShortcut`. Pressing the shortcut again while the window is open just focuses the existing window (handled by `GApplication.activate`).
+**Single instance** — implemented with `Gtk.Application` unique-name `com.iboalali.GeminiGemShortcut`. Pressing the shortcut again while the window is open just focuses the existing window (handled by `GApplication.activate`).
 
 ## Gemini client
 
@@ -158,7 +158,7 @@ End-to-end checks:
 
 ## Out of scope for v1 (noted in README as future work)
 
-- Bottom-anchored window positioning. Would require either GTK Layer Shell (wlroots compositors only — not GNOME/Mutter) or running under XWayland with `GDK_BACKEND=x11`. Explicitly deferred at the user's request.
+- ~~Bottom-anchored window positioning.~~ **Implemented** as the optional GNOME Shell extension at `extension/gemini-gem-shortcut@iboalali.com/`. The extension runs inside Mutter and calls `MetaWindow.move_frame()` on `display::window-created`, matching the launcher by GTK app-id. Layer Shell and XWayland were considered and rejected — the Shell extension is the only path that respects the "pure Wayland + latest GTK" constraint.
 - Markdown rendering of replies (would need WebKitGTK or a markdown-to-Pango converter).
 - Image / file attachments (the API supports them but UI work is non-trivial).
 - GNOME Keyring storage for the API key.

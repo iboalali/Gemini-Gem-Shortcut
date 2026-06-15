@@ -11,7 +11,7 @@ before making structural changes. `README.md` is the user-facing setup.
 Three Python modules + a shell wrapper + a stylesheet:
 
 - `main.py` — `Gtk.Application` (single-instance via app-id
-  `de.blueworld.GeminiGemShortcut`), `MainWindow` (input, two `Gtk.DropDown`s,
+  `com.iboalali.GeminiGemShortcut`), `MainWindow` (input, two `Gtk.DropDown`s,
   expanding response area, multi-turn conversation), `SettingsWindow`
   (API key + models + Gem notebook tabs). Both windows live here.
 - `gemini_client.py` — `stream_generate()` generator that POSTs to
@@ -24,6 +24,18 @@ Three Python modules + a shell wrapper + a stylesheet:
 - `style.css` — dark Spotlight-style theme. Loaded once at app activation
   via `Gtk.CssProvider` (`GeminiGemApp._load_css`) at
   `STYLE_PROVIDER_PRIORITY_APPLICATION`. Edit and relaunch to iterate.
+- `extension/gemini-gem-shortcut@iboalali.com/` — optional GNOME Shell
+  extension that bottom-anchors the launcher window (GJS, GNOME 45+ ESM
+  API). Self-contained; the Python app has no knowledge of it. See
+  `extension/README.md` for install and `extension/install.sh` for the
+  one-shot installer. Matching is by GTK app-id, so the rename of
+  `APP_ID` in `main.py` must stay in sync with `TARGET_APP_ID` in
+  `extension.js`. Placement happens on the window-manager `map` signal,
+  NOT `display::window-created`: at creation a Wayland GTK window has no
+  real frame size yet (and a `move_frame()` issued before the window is
+  mapped doesn't stick — the window lands top-left). The target monitor
+  *is* captured at `window-created` though, before the launcher steals
+  focus. Don't move placement back to `window-created`.
 
 ## Run / develop
 
@@ -147,7 +159,12 @@ remove any of those three steps.
   downgrade to GTK3. The user explicitly chose this.
 - **No client-side window positioning.** GTK4 dropped `move()`, and Wayland
   doesn't let clients position themselves on Mutter. Bottom-anchored
-  positioning was considered and explicitly deferred. Don't reintroduce it.
+  positioning lives in the optional GNOME Shell extension at
+  `extension/gemini-gem-shortcut@iboalali.com/` — that runs *inside*
+  Mutter and uses `MetaWindow.move_frame()`, which is the only legitimate
+  path on stock GNOME. Do not reintroduce client-side positioning
+  attempts (XWayland fallback, layer-shell, etc.) — those were
+  considered and rejected.
 - **No deprecated widgets.** Use `Gtk.DropDown` + `Gtk.StringList`, not
   `Gtk.ComboBoxText`. The migration was done to silence GTK4 deprecation
   warnings; don't undo it.

@@ -14,7 +14,7 @@ from gi.repository import Gdk, GLib, GObject, Gio, Gtk  # noqa: E402
 import config  # noqa: E402
 from gemini_client import GeminiError, stream_generate  # noqa: E402
 
-APP_ID = "de.blueworld.GeminiGemShortcut"
+APP_ID = "com.iboalali.GeminiGemShortcut"
 WINDOW_WIDTH = 640
 CSS_PATH = Path(__file__).parent / "style.css"
 
@@ -522,7 +522,22 @@ class SettingsWindow(Gtk.Window):
             "models": list(cfg.get("models", [])),
             "gems": [dict(g) for g in cfg.get("gems", [])],
         }
+
+        # Esc closes and discards (same as the Cancel button below in
+        # `_build_ui`). CAPTURE phase so focus owner (Entry/TextView/etc.)
+        # can't swallow the keystroke first.
+        esc_ctrl = Gtk.EventControllerKey()
+        esc_ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        esc_ctrl.connect("key-pressed", self._on_key_pressed)
+        self.add_controller(esc_ctrl)
+
         self._build_ui()
+
+    def _on_key_pressed(self, _ctrl, keyval, _keycode, _state) -> bool:
+        if keyval == Gdk.KEY_Escape:
+            self.close()
+            return True
+        return False
 
     def _build_ui(self) -> None:
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)

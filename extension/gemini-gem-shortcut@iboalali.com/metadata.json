@@ -1,0 +1,8 @@
+{
+  "name": "Gemini Gem Shortcut Positioner",
+  "description": "Positions the Gemini Gem Shortcut launcher window at bottom-center on launch.",
+  "uuid": "gemini-gem-shortcut@iboalali.com",
+  "shell-version": ["46"],
+  "settings-schema": "org.gnome.shell.extensions.gemini-gem-shortcut",
+  "url": "https://github.com/iboalali/Gemini-Gem-Shortcut"
+}

@@ -8,6 +8,8 @@ A small launcher window for Ubuntu GNOME that talks to the Gemini API.
 - Conversation is multi-turn while the window is open. Closing the window resets it.
 - A gear icon opens settings (API key, models, "Gems" = named system-instruction presets).
 - Drag the window from any empty area to move it.
+- *Optional:* a companion GNOME Shell extension can bottom-anchor the window
+  Spotlight-style — see [Optional: bottom-anchored window position](#optional-bottom-anchored-window-position).
 
 <img width="1302" height="308" alt="image" src="https://github.com/user-attachments/assets/11005d36-dc6b-4b75-9d30-31f01ad2dd5a" />
 
@@ -101,13 +103,27 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 
 You can edit this file directly or use the settings window.
 
+## Optional: bottom-anchored window position
+
+By default the launcher opens wherever GNOME/Mutter places it (usually
+centered). If you want a Spotlight-style bottom-center anchor, install
+the small companion GNOME Shell extension in [`extension/`](extension/):
+
+```bash
+./extension/install.sh
+# then log out and back in (Wayland)
+```
+
+See [`extension/README.md`](extension/README.md) for what it does, how
+to configure the offset, and the multi-monitor behavior. The app works
+without it; this is purely additive.
+
 ## Known limitations / future work
 
-- **Window position** is whatever the GNOME compositor picks (usually centered).
-  Pure Wayland clients can't position themselves; GTK4 also removed `move()`.
-  If you really want bottom-centered, the options are (a) GTK Layer Shell
-  (requires a wlroots compositor — won't work on stock GNOME/Mutter) or
-  (b) launching under XWayland with `GDK_BACKEND=x11`. Out of scope for v1.
+- **Window position** without the optional extension is whatever the
+  GNOME compositor picks (usually centered). Pure Wayland clients can't
+  position themselves; GTK4 also removed `move()`. The companion
+  extension above is the supported way to get a fixed position.
 - **Always-on-top / skip-taskbar** hints were dropped in GTK4 too. The window
   behaves like a regular app window.
 - **API key** is stored plaintext in `~/.config/gemini-gem-shortcut/config.json`

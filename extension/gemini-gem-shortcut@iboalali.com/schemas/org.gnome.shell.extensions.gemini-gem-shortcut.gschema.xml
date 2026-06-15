@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.gemini-gem-shortcut"
+          path="/org/gnome/shell/extensions/gemini-gem-shortcut/">
+    <key name="bottom-offset-percent" type="i">
+      <default>20</default>
+      <range min="0" max="50"/>
+      <summary>Bottom offset (% of work-area height)</summary>
+      <description>Distance of the window's bottom edge from the bottom of the work area, expressed as a percentage of work-area height.</description>
+    </key>
+  </schema>
+</schemalist>
