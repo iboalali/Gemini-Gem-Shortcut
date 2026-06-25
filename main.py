@@ -113,6 +113,54 @@ class MainWindow(Gtk.ApplicationWindow):
         self._apply_defaults()
 
         GLib.idle_add(self.input_view.grab_focus)
+        GLib.idle_add(self._maybe_autopaste_clipboard)
+
+    # ── clipboard auto-paste ────────────────────────────────────────────
+
+    def _maybe_autopaste_clipboard(self) -> bool:
+        # Per-Gem: if the active Gem opts in, prefill the input with the
+        # current clipboard text. Resolved the same way as `_submit`.
+        gem_name = _dropdown_get_text(self.gem_combo) or ""
+        gem = config.find_gem(self.cfg, gem_name) or {}
+        if gem.get("auto_paste_clipboard", False):
+            self._read_clipboard_into_input(attempt=0)
+        return False  # one-shot idle
+
+    def _read_clipboard_into_input(self, attempt: int) -> None:
+        # On Wayland a freshly-mapped window hasn't negotiated the clipboard
+        # data-offer yet, so an immediate read fails ("No compatible transfer
+        # format found" / "empty clipboard"). The offer lands shortly after the
+        # surface gains focus, so we retry on a short timeout until it succeeds
+        # or we give up. Async read keeps the GTK main loop responsive; the
+        # callback runs on the main loop, so touching widgets there is safe.
+        self.get_clipboard().read_text_async(
+            None, lambda clip, res: self._on_clipboard_read(clip, res, attempt)
+        )
+
+    _AUTOPASTE_MAX_ATTEMPTS = 20
+    _AUTOPASTE_RETRY_MS = 50
+
+    def _on_clipboard_read(
+        self, clipboard: Gdk.Clipboard, result: Gio.AsyncResult, attempt: int
+    ) -> None:
+        try:
+            text = clipboard.read_text_finish(result)
+        except GLib.Error:
+            text = None  # offer not ready yet (or genuinely nothing) — retry
+        if not text:
+            if attempt + 1 < self._AUTOPASTE_MAX_ATTEMPTS:
+                GLib.timeout_add(
+                    self._AUTOPASTE_RETRY_MS,
+                    lambda: (self._read_clipboard_into_input(attempt + 1), False)[1],
+                )
+            return
+        buf = self.input_view.get_buffer()
+        # Don't clobber text the user already started typing during the retries.
+        if buf.get_char_count() > 0:
+            return
+        buf.set_text(text)
+        # Select all so the first keystroke replaces it / Enter sends it as-is.
+        buf.select_range(buf.get_start_iter(), buf.get_end_iter())
 
     # ── layout ──────────────────────────────────────────────────────────
 
@@ -664,10 +712,15 @@ class SettingsWindow(Gtk.Window):
         auto_copy_check.set_active(bool(gem.get("auto_copy", False)))
         page.append(auto_copy_check)
 
+        auto_paste_check = Gtk.CheckButton(label="Paste clipboard into input on open")
+        auto_paste_check.set_active(bool(gem.get("auto_paste_clipboard", False)))
+        page.append(auto_paste_check)
+
         page._gem_name_entry = name_entry  # type: ignore[attr-defined]
         page._gem_instr_view = instr_view  # type: ignore[attr-defined]
         page._gem_default_model_entry = default_model_entry  # type: ignore[attr-defined]
         page._gem_auto_copy_check = auto_copy_check  # type: ignore[attr-defined]
+        page._gem_auto_paste_check = auto_paste_check  # type: ignore[attr-defined]
 
         label_text = gem.get("name", "Gem") or "Gem"
         tab_label = Gtk.Label(label=label_text)
@@ -699,11 +752,13 @@ class SettingsWindow(Gtk.Window):
             instr = ibuf.get_text(ibuf.get_start_iter(), ibuf.get_end_iter(), False)
             dm = page._gem_default_model_entry.get_text().strip() or None  # type: ignore[attr-defined]
             auto_copy = page._gem_auto_copy_check.get_active()  # type: ignore[attr-defined]
+            auto_paste = page._gem_auto_paste_check.get_active()  # type: ignore[attr-defined]
             gems.append({
                 "name": name,
                 "system_instruction": instr,
                 "default_model": dm,
                 "auto_copy": auto_copy,
+                "auto_paste_clipboard": auto_paste,
             })
 
         new_cfg = {

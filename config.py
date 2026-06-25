@@ -26,6 +26,7 @@ DEFAULT_CONFIG: dict = {
             "system_instruction": "",
             "default_model": None,
             "auto_copy": False,
+            "auto_paste_clipboard": False,
         },
     ],
 }
