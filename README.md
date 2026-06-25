@@ -80,6 +80,10 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 - Each Gem can opt into **automatic copy-to-clipboard** of every full
   response — toggle *"Copy response to clipboard automatically"* on the
   Gem's tab in settings.
+- Each Gem can also opt into **auto-pasting the clipboard** into the input
+  when the window opens — toggle *"Paste clipboard into input on open"* on
+  the Gem's tab. The pasted text is pre-selected, so `Enter` sends it as-is
+  or your first keystroke replaces it.
 - The window auto-closes when it loses focus (spotlight-launcher behavior).
 - Pressing the keyboard shortcut while the window is open just refocuses it
   (single-instance via `GApplication`).
@@ -95,8 +99,8 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
   "default_gem": "General",
   "models": ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.1-pro-preview"],
   "gems": [
-    {"name": "General", "system_instruction": "", "default_model": null, "auto_copy": false},
-    {"name": "Translator → DE", "system_instruction": "Translate to German.", "default_model": null, "auto_copy": true}
+    {"name": "General", "system_instruction": "", "default_model": null, "auto_copy": false, "auto_paste_clipboard": false},
+    {"name": "Translator → DE", "system_instruction": "Translate to German.", "default_model": null, "auto_copy": true, "auto_paste_clipboard": true}
   ]
 }
 ```

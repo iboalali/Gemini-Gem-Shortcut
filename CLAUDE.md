@@ -127,6 +127,21 @@ confirmation. The flag is snapshotted at `_submit` time
 (`self._current_auto_copy`) so editing the Gem mid-stream doesn't change
 behavior for the in-flight reply.
 
+**Per-Gem clipboard auto-paste has a Wayland timing gotcha.** Per-Gem
+`auto_paste_clipboard: bool` prefills `input_view` with the clipboard text
+when the window opens (`_maybe_autopaste_clipboard`, scheduled from
+`__init__` via `GLib.idle_add`), then selects all so Enter sends it as-is.
+The non-obvious part: a freshly-mapped Wayland window has NOT negotiated the
+clipboard data-offer yet at the first idle tick, so an immediate
+`read_text_async` fails with "No compatible transfer format found" /
+"Cannot read from empty clipboard" — the offer only lands shortly after the
+surface gains keyboard focus. `_read_clipboard_into_input(attempt)` therefore
+RETRIES on a 50 ms `GLib.timeout_add` (up to `_AUTOPASTE_MAX_ATTEMPTS`, ~1 s
+total) until the read succeeds. Do NOT collapse this back to a single
+immediate read — it will silently paste nothing. The callback also bails if
+`buf.get_char_count() > 0` so a retry that lands late never clobbers text the
+user already started typing.
+
 **Don't disable input via `set_sensitive(False)`.** Use `set_editable(False)`
 instead. Turning the focused widget insensitive forces GTK to move focus
 away, and during the transition `contains_focus` on the window briefly goes
