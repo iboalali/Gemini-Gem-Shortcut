@@ -118,30 +118,50 @@ class MainWindow(Gtk.ApplicationWindow):
     # ── clipboard auto-paste ────────────────────────────────────────────
 
     def _maybe_autopaste_clipboard(self) -> bool:
-        # Per-Gem: if the active Gem opts in, prefill the input with the
-        # current clipboard text. Resolved the same way as `_submit`.
+        # Per-Gem: if the active Gem opts in, prefill the input from a
+        # clipboard source. Resolved the same way as `_submit`. Two sources,
+        # tried in priority order:
+        #   - PRIMARY selection (`auto_paste_selection`): whatever text is
+        #     currently highlighted system-wide. This is the X11/Wayland
+        #     "selection" (middle-click-paste), distinct from Ctrl+C.
+        #   - CLIPBOARD (`auto_paste_clipboard`): the last explicit Ctrl+C.
+        # Selection wins when both are enabled, falling back to the clipboard
+        # only after the selection source is exhausted with no text.
         gem_name = _dropdown_get_text(self.gem_combo) or ""
         gem = config.find_gem(self.cfg, gem_name) or {}
+        sources: list[Gdk.Clipboard] = []
+        if gem.get("auto_paste_selection", False):
+            sources.append(self.get_primary_clipboard())
         if gem.get("auto_paste_clipboard", False):
-            self._read_clipboard_into_input(attempt=0)
+            sources.append(self.get_clipboard())
+        if sources:
+            self._read_clipboard_into_input(sources, source_idx=0, attempt=0)
         return False  # one-shot idle
 
-    def _read_clipboard_into_input(self, attempt: int) -> None:
+    def _read_clipboard_into_input(
+        self, sources: list[Gdk.Clipboard], source_idx: int, attempt: int
+    ) -> None:
         # On Wayland a freshly-mapped window hasn't negotiated the clipboard
         # data-offer yet, so an immediate read fails ("No compatible transfer
         # format found" / "empty clipboard"). The offer lands shortly after the
         # surface gains focus, so we retry on a short timeout until it succeeds
         # or we give up. Async read keeps the GTK main loop responsive; the
         # callback runs on the main loop, so touching widgets there is safe.
-        self.get_clipboard().read_text_async(
-            None, lambda clip, res: self._on_clipboard_read(clip, res, attempt)
+        sources[source_idx].read_text_async(
+            None,
+            lambda clip, res: self._on_clipboard_read(clip, res, sources, source_idx, attempt),
         )
 
     _AUTOPASTE_MAX_ATTEMPTS = 20
     _AUTOPASTE_RETRY_MS = 50
 
     def _on_clipboard_read(
-        self, clipboard: Gdk.Clipboard, result: Gio.AsyncResult, attempt: int
+        self,
+        clipboard: Gdk.Clipboard,
+        result: Gio.AsyncResult,
+        sources: list[Gdk.Clipboard],
+        source_idx: int,
+        attempt: int,
     ) -> None:
         try:
             text = clipboard.read_text_finish(result)
@@ -151,8 +171,15 @@ class MainWindow(Gtk.ApplicationWindow):
             if attempt + 1 < self._AUTOPASTE_MAX_ATTEMPTS:
                 GLib.timeout_add(
                     self._AUTOPASTE_RETRY_MS,
-                    lambda: (self._read_clipboard_into_input(attempt + 1), False)[1],
+                    lambda: (
+                        self._read_clipboard_into_input(sources, source_idx, attempt + 1),
+                        False,
+                    )[1],
                 )
+            elif source_idx + 1 < len(sources):
+                # This source's retry budget is exhausted with nothing to
+                # paste — fall back to the next source (e.g. selection → clipboard).
+                self._read_clipboard_into_input(sources, source_idx + 1, attempt=0)
             return
         buf = self.input_view.get_buffer()
         # Don't clobber text the user already started typing during the retries.
@@ -716,11 +743,20 @@ class SettingsWindow(Gtk.Window):
         auto_paste_check.set_active(bool(gem.get("auto_paste_clipboard", False)))
         page.append(auto_paste_check)
 
+        auto_paste_sel_check = Gtk.CheckButton(label="Paste selected text into input on open")
+        auto_paste_sel_check.set_tooltip_text(
+            "Prefill with the text currently highlighted in any app (the primary "
+            "selection). Takes priority over the clipboard when both are enabled."
+        )
+        auto_paste_sel_check.set_active(bool(gem.get("auto_paste_selection", False)))
+        page.append(auto_paste_sel_check)
+
         page._gem_name_entry = name_entry  # type: ignore[attr-defined]
         page._gem_instr_view = instr_view  # type: ignore[attr-defined]
         page._gem_default_model_entry = default_model_entry  # type: ignore[attr-defined]
         page._gem_auto_copy_check = auto_copy_check  # type: ignore[attr-defined]
         page._gem_auto_paste_check = auto_paste_check  # type: ignore[attr-defined]
+        page._gem_auto_paste_sel_check = auto_paste_sel_check  # type: ignore[attr-defined]
 
         label_text = gem.get("name", "Gem") or "Gem"
         tab_label = Gtk.Label(label=label_text)
@@ -753,12 +789,14 @@ class SettingsWindow(Gtk.Window):
             dm = page._gem_default_model_entry.get_text().strip() or None  # type: ignore[attr-defined]
             auto_copy = page._gem_auto_copy_check.get_active()  # type: ignore[attr-defined]
             auto_paste = page._gem_auto_paste_check.get_active()  # type: ignore[attr-defined]
+            auto_paste_sel = page._gem_auto_paste_sel_check.get_active()  # type: ignore[attr-defined]
             gems.append({
                 "name": name,
                 "system_instruction": instr,
                 "default_model": dm,
                 "auto_copy": auto_copy,
                 "auto_paste_clipboard": auto_paste,
+                "auto_paste_selection": auto_paste_sel,
             })
 
         new_cfg = {

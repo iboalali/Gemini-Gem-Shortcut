@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Per-Gem **auto-paste of the selected text into the input on open**
+  (`auto_paste_selection`), toggled per Gem in settings. Grabs the primary
+  selection (text highlighted in any app) so you can highlight, press the
+  shortcut, and send it straight to the Gem. Takes priority over the
+  clipboard paste, falling back to it when nothing is highlighted.
 - Per-Gem **auto-paste of clipboard into the input on open** (`auto_paste_clipboard`),
   toggled per Gem in settings. The pasted text is pre-selected so `Enter` sends it
   as-is or the first keystroke replaces it.

@@ -27,6 +27,7 @@ DEFAULT_CONFIG: dict = {
             "default_model": None,
             "auto_copy": False,
             "auto_paste_clipboard": False,
+            "auto_paste_selection": False,
         },
     ],
 }
