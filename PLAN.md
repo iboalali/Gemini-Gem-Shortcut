@@ -6,7 +6,7 @@ A global keyboard shortcut on Ubuntu GNOME (Wayland) that opens a small, focused
 
 Decisions locked in during planning:
 - There is **no official Google API** that targets a real Gem on `gemini.google.com`. The only ways to hit a literal Gem are unofficial (reverse-engineered web RPC, browser extension intercepting `?q=`, or clipboard+keystroke automation).
-- The chosen approach is the **official Gemini API** with a `system_instruction` that mimics each Gem. The default model is **`gemini-3.1-flash-lite`** (3.0 Flash-Lite does not exist; 3.1 is the GA stable model in the Flash-Lite line).
+- The chosen approach is the **official Gemini API** with a `system_instruction` that mimics each Gem. The default model is **`gemini-3.5-flash-lite`** (the current GA stable model in the Flash-Lite line; the Pro line's newest is `gemini-3.1-pro-preview`, still preview-only).
 - Conversation is **multi-turn while the window is open**, **one-shot** after it closes.
 - **Pure Wayland**, latest GTK (GTK4). Window positioning is left to the compositor.
 
@@ -38,12 +38,12 @@ Path: `~/.config/gemini-gem-shortcut/config.json` (chmod 0600).
 ```json
 {
   "api_key": "AIza...",
-  "default_model": "gemini-3.1-flash-lite",
+  "default_model": "gemini-3.5-flash-lite",
   "default_gem": "General",
   "models": [
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-pro",
-    "gemini-3-flash-preview"
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.1-pro-preview"
   ],
   "gems": [
     {
@@ -54,7 +54,7 @@ Path: `~/.config/gemini-gem-shortcut/config.json` (chmod 0600).
     {
       "name": "Code reviewer",
       "system_instruction": "You are a senior reviewer. Be terse. Point to file:line.",
-      "default_model": "gemini-3.1-pro"
+      "default_model": "gemini-3.1-pro-preview"
     }
   ]
 }
@@ -68,7 +68,7 @@ Path: `~/.config/gemini-gem-shortcut/config.json` (chmod 0600).
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ [Gem: General ▾]  [Model: 3.1 Flash-Lite ▾]  [⚙] │
+│ [Gem: General ▾]  [Model: 3.5 Flash-Lite ▾]  [⚙] │
 │ ┌──────────────────────────────────────────────┐ │
 │ │ Ask anything…                                │ │
 │ └──────────────────────────────────────────────┘ │
@@ -148,7 +148,7 @@ End-to-end checks:
 
 1. **Install deps**: `sudo apt install python3-gi gir1.2-gtk-4.0 python3-venv && python3 -m venv --system-site-packages .venv && .venv/bin/pip install -r requirements.txt && chmod +x run.sh`.
 2. **First launch**: `./run.sh` → window opens, input focused. Settings dialog opens via gear icon. Save API key + add at least one Gem.
-3. **Single-shot**: Type "say hi" with the General Gem and `gemini-3.1-flash-lite`, press Enter → response frame appears, tokens stream in.
+3. **Single-shot**: Type "say hi" with the General Gem and `gemini-3.5-flash-lite`, press Enter → response frame appears, tokens stream in.
 4. **Multi-turn**: After response, ask "what did I just say?" → model echoes "say hi", proving the history is sent.
 5. **Gem switching**: Pick a Gem whose `default_model` differs from the global default → model dropdown auto-switches. Submit a prompt → reply tone reflects the system instruction.
 6. **Esc closes**: window disappears, history is dropped.

@@ -104,9 +104,9 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 ```json
 {
   "api_key": "AIza...",
-  "default_model": "gemini-3.1-flash-lite",
+  "default_model": "gemini-3.5-flash-lite",
   "default_gem": "General",
-  "models": ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.1-pro-preview"],
+  "models": ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-pro-preview"],
   "gems": [
     {"name": "General", "system_instruction": "", "default_model": null, "auto_copy": false, "auto_paste_clipboard": false, "auto_paste_selection": false},
     {"name": "Translator → DE", "system_instruction": "Translate to German.", "default_model": null, "auto_copy": true, "auto_paste_clipboard": false, "auto_paste_selection": true}
@@ -115,6 +115,18 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 ```
 
 You can edit this file directly or use the settings window.
+
+Two things to know about the model list:
+
+- **Updating the app does not rewrite an existing config.** Missing keys are
+  filled in from the defaults, but a `models` list you already have is left
+  alone — so a newer default lineup only reaches you on a fresh install. Edit
+  the list in settings (or in the file) to pick up newer models.
+- **Pro models require a paid tier.** On a free API key, `*-pro*` requests fail
+  with `HTTP 429 … limit: 0` (a hard zero allowance, not a temporary throttle).
+  The Flash and Flash-Lite entries work on the free tier. Run
+  `curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY"`
+  to see every model your key can address.
 
 ## Optional: bottom-anchored window position
 

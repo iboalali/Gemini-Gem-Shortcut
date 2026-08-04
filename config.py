@@ -13,11 +13,11 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG: dict = {
     "api_key": "",
-    "default_model": "gemini-3.1-flash-lite",
+    "default_model": "gemini-3.5-flash-lite",
     "default_gem": "General",
     "models": [
-        "gemini-3.1-flash-lite",
-        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash",
         "gemini-3.1-pro-preview",
     ],
     "gems": [

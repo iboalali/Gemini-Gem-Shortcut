@@ -207,6 +207,37 @@ remove any of those three steps.
   though the real config lives under `~/.config`, this prevents accidental
   commits if someone drops a copy at the project root.
 
+## Updating the model list
+
+Model IDs are duplicated in four places — change all of them together:
+`DEFAULT_CONFIG` in `config.py` (the source of truth), the config examples in
+`README.md` and `PLAN.md`, and the `[Model: … ▾]` sketch in `PLAN.md`.
+
+**Bumping `DEFAULT_CONFIG["models"]` does not migrate an existing config.**
+`config.load()` merges defaults with `setdefault`, which only fills in *missing*
+top-level keys — a user who already has a `models` list keeps their old one
+forever. Editing the default list alone changes nothing for anyone but fresh
+installs; the live `~/.config/.../config.json` has to be rewritten separately
+(via settings, or a one-off `config.load()` → overwrite `models` →
+`config.save()`, which preserves the key, gems and 0600 perms). Also check each
+Gem's `default_model` override for IDs that no longer exist.
+
+**Verify against the API, not against docs or memory.** `GET
+…/v1beta/models?key=$KEY` lists exactly what a given key can address, which is
+the only reliable source for what's current. Then actually stream one token
+through `gemini_client.stream_generate` for each ID — presence in `ListModels`
+is necessary but not sufficient:
+
+- **Pro models are unavailable on the free tier.** Every `*-pro*` ID (including
+  `gemini-pro-latest` and `gemini-2.5-pro`) returns `HTTP 429 … limit: 0` on a
+  free key. `limit: 0` is a hard zero allowance, not a transient throttle —
+  retrying never helps, so don't diagnose it as rate-limiting. Keeping a Pro
+  entry in the list is a deliberate choice (it starts working the moment
+  billing is enabled), not an oversight.
+- Unversioned aliases (`gemini-flash-latest`, `gemini-pro-latest`) float to the
+  newest model in their tier. Prefer pinned IDs in the default list so a
+  silent upstream swap can't change behavior mid-release.
+
 ## Commit / push
 
 - Per the user's global instructions, **never add `Co-Authored-By` to
