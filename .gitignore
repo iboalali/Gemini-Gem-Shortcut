@@ -16,3 +16,6 @@ venv/
 
 # Local config (contains the API key)
 config.json
+
+# Screenshots / recordings from agent sessions
+/captures
