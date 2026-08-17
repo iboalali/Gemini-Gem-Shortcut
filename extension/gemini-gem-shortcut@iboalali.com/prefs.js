@@ -8,7 +8,14 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
-import { ExtensionPreferences } from 'resource:///org/gnome/shell/extensions/prefs.js';
+// NOTE the capitalisation and the extra `js/` segment: prefs run in a separate
+// gjs process backed by the org.gnome.Shell.Extensions resource bundle, whose
+// path is `/org/gnome/Shell/Extensions/js/extensions/prefs.js`. The lowercase
+// `resource:///org/gnome/shell/extensions/…` form used by extension.js only
+// exists inside the gnome-shell process — importing it here fails with
+// "The resource … does not exist" and Extension Manager shows a bare
+// "Something's gone wrong" dialog.
+import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 export default class GeminiGemShortcutPrefs extends ExtensionPreferences {
     fillPreferencesWindow(window) {

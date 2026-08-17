@@ -180,6 +180,40 @@ never returns, and zombie processes accumulate every shortcut press. The
 `self.app.window`, and calls `self.app.quit()` as belt-and-braces. Don't
 remove any of those three steps.
 
+**The extension's two GNOME resource imports use DIFFERENT paths.** They look
+like they should match and they don't:
+
+```js
+// extension.js — runs inside the gnome-shell process
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+// prefs.js — runs in a separate gjs process
+import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+```
+
+Note the capital `S`/`E` and the extra `js/` segment in the prefs one. Prefs are
+hosted by `gjs -m /usr/share/gnome-shell/org.gnome.Shell.Extensions`, a
+different process backed by the `org.gnome.Shell.Extensions.src.gresource`
+bundle; the lowercase `…/org/gnome/shell/…` tree only exists inside
+gnome-shell itself. Getting it wrong throws `ImportError: … The resource at
+"/org/gnome/shell/extensions/prefs.js" does not exist`, and both Extension
+Manager and the Extensions app swallow it into a bare **"Something's gone
+wrong"** dialog with no detail. Verify the real path rather than trusting
+memory:
+
+```bash
+gresource list /usr/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource | grep prefs
+journalctl --user -b --grep "JS ERROR"   # where the swallowed error actually lands
+```
+
+**Only `extension.js` needs a logout; `prefs.js` does not.** The prefs process
+is spawned fresh per dialog and reads `prefs.js` off disk each time, so
+re-running `install.sh` + reopening prefs is enough to test a prefs change.
+`extension.js` and `metadata.json` are loaded once into the running shell, and
+GNOME Shell on Wayland can't be reloaded in place — those do require a log
+out/in. Note the shell refuses a second dialog with "Already showing a prefs
+dialog", so a stale broken one has to be closed (or its gjs pid killed) before
+retrying.
+
 ## Locked-in constraints (do not regress without asking)
 
 - **Pure Wayland + latest GTK.** Do not reintroduce `GDK_BACKEND=x11`. Do not

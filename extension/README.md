@@ -39,7 +39,9 @@ Open the dialog from the terminal:
 gnome-extensions prefs gemini-gem-shortcut@iboalali.com
 ```
 
-Or via the Extensions app (`gnome-extensions-app`).
+Or click the settings/gear button next to **Gemini Gem Shortcut
+Positioner** in Extension Manager or the Extensions app
+(`gnome-extensions-app`).
 
 One setting:
 
@@ -47,6 +49,17 @@ One setting:
   measured from the bottom of the work area (i.e. excluding the top bar
   and dock). Default: `20`. Changes take effect on the next launch of
   the app.
+
+If the settings button opens a window that just says **"Something's gone
+wrong"**, that dialog is hiding a JavaScript error in `prefs.js`. The real
+message is in the journal:
+
+```bash
+journalctl --user -b --grep "JS ERROR"
+```
+
+Note that GNOME allows only one prefs dialog at a time ("Already showing a
+prefs dialog"), so close the broken one before retrying.
 
 ## Multi-monitor
 
@@ -68,8 +81,11 @@ ambiguous), it falls back to the GNOME-configured primary monitor.
   test). The extension uses the standard GNOME 45+ ESM API and shouldn't
   break on minor positioning APIs across versions.
 - **Wayland session restart required to install/upgrade.** GNOME Shell
-  on Wayland can't be reloaded in place. After every change to the
-  extension files, log out and back in.
+  on Wayland can't be reloaded in place, so changes to `extension.js` or
+  `metadata.json` need a log out and back in. Changes to `prefs.js` do
+  not — the preferences dialog runs in its own short-lived process that
+  re-reads the file every time it opens, so `./install.sh` plus
+  reopening the dialog is enough.
 
 ## Uninstall
 

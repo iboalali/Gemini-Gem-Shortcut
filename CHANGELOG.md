@@ -26,4 +26,7 @@ All notable changes to this project are documented here. The format is based on
 - Dropped the CSD titlebar; the window is dragged via a body-level `Gtk.WindowHandle`.
 
 ### Fixed
+- GNOME Shell extension preferences failing with "Something's gone wrong":
+  `prefs.js` imported `ExtensionPreferences` from the gnome-shell resource tree
+  instead of the `org.gnome.Shell.Extensions` one that hosts the prefs process.
 - Zombie processes piling up after the window closed.
