@@ -22,7 +22,11 @@ All notable changes to this project are documented here. The format is based on
 - Focus-out auto-close (spotlight-launcher behavior) with drag-aware debounce.
 
 ### Changed
-- Refreshed the default model list to the current Gemini lineup.
+- Refreshed the default model list to the current Gemini lineup, including
+  `gemini-3.7-flash` and `gemini-3.8-flash`.
+
+### Removed
+- `PLAN.md`. Setup lives in `README.md`, design constraints in `CLAUDE.md`.
 - Dropped the CSD titlebar; the window is dragged via a body-level `Gtk.WindowHandle`.
 
 ### Fixed

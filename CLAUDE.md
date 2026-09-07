@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project shape
 
 A GTK4 launcher window for Ubuntu GNOME (Wayland) that streams replies from the
-official Google Gemini API. `PLAN.md` is the authoritative design doc — read it
-before making structural changes. `README.md` is the user-facing setup.
+official Google Gemini API. `README.md` is the user-facing setup; the design
+constraints live in this file (see "Locked-in constraints" below).
 
 Three Python modules + a shell wrapper + a stylesheet:
 
@@ -243,9 +243,9 @@ retrying.
 
 ## Updating the model list
 
-Model IDs are duplicated in four places — change all of them together:
-`DEFAULT_CONFIG` in `config.py` (the source of truth), the config examples in
-`README.md` and `PLAN.md`, and the `[Model: … ▾]` sketch in `PLAN.md`.
+Model IDs are duplicated in two places — change both together:
+`DEFAULT_CONFIG` in `config.py` (the source of truth) and the config example in
+`README.md`.
 
 **Bumping `DEFAULT_CONFIG["models"]` does not migrate an existing config.**
 `config.load()` merges defaults with `setdefault`, which only fills in *missing*
