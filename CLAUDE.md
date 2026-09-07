@@ -109,6 +109,24 @@ leaves it (spotlight-launcher behavior). Implementation:
    deferred-close time (the move makes us inactive, so the check returns
    False and the close fires anyway).
 
+**Per-Gem thinking is a fallback ladder, not a single value.** The `thinking`
+bool on each Gem maps to `generationConfig.thinkingConfig.thinkingLevel` in
+`gemini_client.stream_generate`. On tries `"high"`; off tries `"minimal"`, then
+`"low"`; both end with "no thinkingConfig at all". A level the model refuses
+comes back as HTTP 400 with "Thinking level ... is not supported" in the body,
+which `_stream_once` turns into `_UnsupportedThinkingLevel` so the loop moves to
+the next rung. The retry is safe because the status check happens before any
+token is yielded. Measured against the API (2026-09): `"minimal"` gives 0
+thought tokens on the Flash-Lite line, 3.5-flash and 3.6-flash, but 3.7-flash
+and 3.8-flash reject it and only go down to `"low"` (still ~50-70 thought
+tokens). Gemma models reject `"low"` with "Thinking level is not supported"
+and return HTTP 500 on `"high"`; the 500 is deliberately not treated as a
+fallback trigger so real server errors stay visible. `thinkingBudget` is not
+used: 3.x models reject `thinkingBudget: 0` with a generic "invalid argument"
+that carries no thinking hint, so it can't drive the ladder. Like `auto_copy`,
+the flag is snapshotted in `_submit` and passed to the worker, so editing the
+Gem mid-stream doesn't affect the in-flight request.
+
 **Conversation rollback on errors.** `_show_error` pops the trailing user
 turn off `self.history` so a failed request doesn't poison the next turn's
 context.

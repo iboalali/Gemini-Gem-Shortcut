@@ -93,6 +93,11 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
   reads **highlighted** text from apps that support the selection protocol
   (most GTK/Qt/GNOME apps, terminals, and browsers do); Wayland does not let
   any app read arbitrary, unselected text fields.
+- Each Gem has a **Thinking** checkbox. On asks the model for its highest
+  thinking level (better on hard questions, slower). Off asks for the lowest
+  level the model allows: fully off on Flash-Lite and most Flash models, while
+  some Flash models refuse to disable it and keep a little thinking. Models
+  that do not support thinking levels at all are sent the request without one.
 - The window auto-closes when it loses focus (spotlight-launcher behavior).
 - Pressing the keyboard shortcut while the window is open just refocuses it
   (single-instance via `GApplication`).
@@ -108,8 +113,8 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
   "default_gem": "General",
   "models": ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.1-pro-preview"],
   "gems": [
-    {"name": "General", "system_instruction": "", "default_model": null, "auto_copy": false, "auto_paste_clipboard": false, "auto_paste_selection": false},
-    {"name": "Translator → DE", "system_instruction": "Translate to German.", "default_model": null, "auto_copy": true, "auto_paste_clipboard": false, "auto_paste_selection": true}
+    {"name": "General", "system_instruction": "", "default_model": null, "auto_copy": false, "auto_paste_clipboard": false, "auto_paste_selection": false, "thinking": false},
+    {"name": "Translator → DE", "system_instruction": "Translate to German.", "default_model": null, "auto_copy": true, "auto_paste_clipboard": false, "auto_paste_selection": true, "thinking": false}
   ]
 }
 ```

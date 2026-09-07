@@ -30,6 +30,7 @@ DEFAULT_CONFIG: dict = {
             "auto_copy": False,
             "auto_paste_clipboard": False,
             "auto_paste_selection": False,
+            "thinking": False,
         },
     ],
 }

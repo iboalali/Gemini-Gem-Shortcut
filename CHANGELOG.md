@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Per-Gem **Thinking** checkbox (`thinking`). On requests the model's highest
+  thinking level, off requests the lowest it allows. Levels a model rejects
+  fall back automatically, so the checkbox works across models with
+  different support.
 - Per-Gem **auto-paste of the selected text into the input on open**
   (`auto_paste_selection`), toggled per Gem in settings. Grabs the primary
   selection (text highlighted in any app) so you can highlight, press the

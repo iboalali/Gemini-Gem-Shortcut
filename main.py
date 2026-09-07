@@ -443,6 +443,7 @@ class MainWindow(Gtk.ApplicationWindow):
         # Snapshot the gem's auto-copy preference at submit time so editing
         # the gem mid-stream doesn't change behavior for the in-flight reply.
         self._current_auto_copy = bool(gem.get("auto_copy", False))
+        thinking = bool(gem.get("thinking", False))
 
         self.history.append({"role": "user", "parts": [{"text": text}]})
 
@@ -461,14 +462,23 @@ class MainWindow(Gtk.ApplicationWindow):
         contents_snapshot = [dict(c) for c in self.history]
         threading.Thread(
             target=self._worker,
-            args=(api_key, model, system_instruction, contents_snapshot),
+            args=(api_key, model, system_instruction, contents_snapshot, thinking),
             daemon=True,
         ).start()
 
-    def _worker(self, api_key: str, model: str, system_instruction: str, contents: list[dict]) -> None:
+    def _worker(
+        self,
+        api_key: str,
+        model: str,
+        system_instruction: str,
+        contents: list[dict],
+        thinking: bool,
+    ) -> None:
         try:
             first = True
-            for delta in stream_generate(api_key, model, system_instruction, contents):
+            for delta in stream_generate(
+                api_key, model, system_instruction, contents, thinking=thinking
+            ):
                 if self.cancel_flag.is_set():
                     break
                 if first:
@@ -751,12 +761,22 @@ class SettingsWindow(Gtk.Window):
         auto_paste_sel_check.set_active(bool(gem.get("auto_paste_selection", False)))
         page.append(auto_paste_sel_check)
 
+        thinking_check = Gtk.CheckButton(label="Thinking (deeper reasoning, slower replies)")
+        thinking_check.set_tooltip_text(
+            "On: ask the model for its highest thinking level. Off: ask for the "
+            "lowest level the model allows (fully off on Flash-Lite and most Flash "
+            "models; a little thinking remains on models that refuse to disable it)."
+        )
+        thinking_check.set_active(bool(gem.get("thinking", False)))
+        page.append(thinking_check)
+
         page._gem_name_entry = name_entry  # type: ignore[attr-defined]
         page._gem_instr_view = instr_view  # type: ignore[attr-defined]
         page._gem_default_model_entry = default_model_entry  # type: ignore[attr-defined]
         page._gem_auto_copy_check = auto_copy_check  # type: ignore[attr-defined]
         page._gem_auto_paste_check = auto_paste_check  # type: ignore[attr-defined]
         page._gem_auto_paste_sel_check = auto_paste_sel_check  # type: ignore[attr-defined]
+        page._gem_thinking_check = thinking_check  # type: ignore[attr-defined]
 
         label_text = gem.get("name", "Gem") or "Gem"
         tab_label = Gtk.Label(label=label_text)
@@ -790,6 +810,7 @@ class SettingsWindow(Gtk.Window):
             auto_copy = page._gem_auto_copy_check.get_active()  # type: ignore[attr-defined]
             auto_paste = page._gem_auto_paste_check.get_active()  # type: ignore[attr-defined]
             auto_paste_sel = page._gem_auto_paste_sel_check.get_active()  # type: ignore[attr-defined]
+            thinking = page._gem_thinking_check.get_active()  # type: ignore[attr-defined]
             gems.append({
                 "name": name,
                 "system_instruction": instr,
@@ -797,6 +818,7 @@ class SettingsWindow(Gtk.Window):
                 "auto_copy": auto_copy,
                 "auto_paste_clipboard": auto_paste,
                 "auto_paste_selection": auto_paste_sel,
+                "thinking": thinking,
             })
 
         new_cfg = {
