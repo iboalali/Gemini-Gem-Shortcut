@@ -102,6 +102,33 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 - Pressing the keyboard shortcut while the window is open just refocuses it
   (single-instance via `GApplication`).
 
+## Token usage
+
+Each reply is followed by its own token count, and the header shows the running
+total for today. Hover the total for a per-model breakdown plus 7- and 30-day
+sums.
+
+**What the number counts:** input + output + thinking, added up over every
+reply today. That is what you are billed for, and it is why a long conversation
+gets expensive: the whole history is resent on every turn, so turn 5 pays for
+turns 1-4 again.
+
+**It is not your free-tier headroom.** The free tier meters *requests* and
+*input* tokens, per model per day. Output and thinking tokens dominate the
+total but count against no token quota, so the headline number can look alarming
+while your actual quota use is tiny. The tooltip lists input tokens (`in`) and
+request counts per model for exactly this reason.
+
+The counts come from the `usageMetadata` the API returns with every response,
+added up locally in `~/.config/gemini-gem-shortcut/usage.json` (chmod `0600`,
+90 days of history). **This file is the only usage history you get**: the Gemini
+API has no usage or quota endpoint, so nothing can be reconstructed after the
+fact. Delete the file to reset the counters.
+
+Two things it does not see: replies you cut off by closing the window mid-stream,
+and any other use of the same API key. For an authoritative number, check
+<https://ai.dev/rate-limit>.
+
 ## Config
 
 `~/.config/gemini-gem-shortcut/config.json` (chmod `0600`):

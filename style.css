@@ -237,10 +237,21 @@ button.suggested-action:disabled {
     color: #88a4c0;
 }
 
-/* Settings labels marked with .dim-label. Brighter than Adwaita's default
- * secondary-text grey so they stay legible against the dark background. */
+/* Labels marked with .dim-label: the settings field captions and the header's
+ * token counter. Brighter than Adwaita's default secondary-text grey so they
+ * stay legible against the dark background. */
 .dim-label {
     color: #bbbbbb;
+}
+
+/* Running token total in the main window header: the count over a "tokens
+ * today" caption, which main.py sets as <small> markup. Quiet enough not to
+ * compete with the dropdowns it sits between, but the count itself needs to
+ * stay readable, so the size here applies to the count and the caption
+ * shrinks off it. */
+#usage-label {
+    font-size: 10pt;
+    padding: 0 4px;
 }
 
 /* Entry fields in the settings window. */

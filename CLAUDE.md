@@ -8,7 +8,7 @@ A GTK4 launcher window for Ubuntu GNOME (Wayland) that streams replies from the
 official Google Gemini API. `README.md` is the user-facing setup; the design
 constraints live in this file (see "Locked-in constraints" below).
 
-Three Python modules + a shell wrapper + a stylesheet:
+Four Python modules + a shell wrapper + a stylesheet:
 
 - `main.py` — `Gtk.Application` (single-instance via app-id
   `com.iboalali.GeminiGemShortcut`), `MainWindow` (input, two `Gtk.DropDown`s,
@@ -19,6 +19,10 @@ Three Python modules + a shell wrapper + a stylesheet:
   deltas. Raises `GeminiError` for any failure with a human-friendly message.
 - `config.py` — load/save `~/.config/gemini-gem-shortcut/config.json` (chmod
   0600), default bootstrap, `find_gem()` helper.
+- `usage.py` holds the local token accounting in
+  `~/.config/gemini-gem-shortcut/usage.json` (chmod 0600), bucketed by day and
+  model, pruned to `RETENTION_DAYS`. Also owns the display formatting
+  (`format_tokens`, `format_response`, `summary`) so `main.py` stays UI-only.
 - `run.sh` — what the GNOME keyboard shortcut binds to. `exec`s
   `.venv/bin/python main.py`.
 - `style.css` — dark Spotlight-style theme. Loaded once at app activation
@@ -130,6 +134,41 @@ Gem mid-stream doesn't affect the in-flight request.
 **Conversation rollback on errors.** `_show_error` pops the trailing user
 turn off `self.history` so a failed request doesn't poison the next turn's
 context.
+
+**Token usage is counted locally because the API cannot report it.** There is
+no usage or quota endpoint on `generativelanguage.googleapis.com`. That is
+verified against the full v1beta discovery document, which has no such method,
+and successful responses carry no `x-ratelimit-*` headers either. A 429 names the
+quota you exceeded (`QuotaFailure` violations plus a `RetryInfo`) but never how
+much of it you had used. Those violation names are also where the free tier's
+actual meters show up: `generate_content_free_tier_requests` and
+`generate_content_free_tier_input_token_count`, per model, per minute and per
+day. Only *input* tokens are metered, which is why `usage.summary` puts the
+input count before the total. `totalTokenCount` is the billing figure
+(input + output + thinking), not the quota figure. The aggregate lives in Cloud Monitoring / Service
+Usage, and both reject an API key outright ("API keys are not supported by this
+API"), so reading it needs OAuth credentials and the project id, which an API
+key does not reveal. Don't go looking for a usage endpoint again; accumulate
+client-side instead.
+
+How the accumulation works:
+
+1. **Every SSE chunk carries a `usageMetadata`, and the counts are cumulative**
+   for the reply so far (`candidatesTokenCount` grows chunk by chunk,
+   `promptTokenCount` holds steady). So `_stream_once` keeps only the newest and
+   reports it once. Summing every chunk would multiply-count the same tokens.
+2. `stream_generate(..., on_usage=cb)` fires the callback from a `finally`, on
+   the **caller's thread**, which is the streaming worker, not the GTK main
+   loop. It fires on `GeneratorExit` too, when the window closes mid-stream.
+   The callback must therefore never touch a GTK widget.
+   `MainWindow._worker` passes `usage_meta.update`, so the dict just fills in
+   place, then travels to the main thread as an argument of the `GLib.idle_add`
+   that calls `_finish_stream`.
+3. The thinking-level retry ladder calls `_stream_once` more than once, but a
+   rejected level fails on the status check before any chunk arrives, so the
+   callback still fires exactly once per reply.
+4. `_record_usage` swallows `OSError`: an unwritable store must never break a
+   reply.
 
 **Clipboard paths are two-tier.** `Ctrl+C` is handled at the window level
 (`_copy_response_selection`) so a mouse-selection in the read-only response

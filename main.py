@@ -12,6 +12,7 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, GLib, GObject, Gio, Gtk  # noqa: E402
 
 import config  # noqa: E402
+import usage  # noqa: E402
 from gemini_client import GeminiError, stream_generate  # noqa: E402
 
 APP_ID = "com.iboalali.GeminiGemShortcut"
@@ -56,6 +57,7 @@ class MainWindow(Gtk.ApplicationWindow):
         super().__init__(application=app, title="Gemini")
         self.app = app
         self.cfg = config.load()
+        self.usage_data = usage.load()
         self.history: list[dict] = []
         self.current_assistant_buf: list[str] = []
         self.cancel_flag = threading.Event()
@@ -111,6 +113,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._populate_gem_combo()
         self._populate_model_combo()
         self._apply_defaults()
+        self._refresh_usage_label()
 
         GLib.idle_add(self.input_view.grab_focus)
         GLib.idle_add(self._maybe_autopaste_clipboard)
@@ -221,6 +224,16 @@ class MainWindow(Gtk.ApplicationWindow):
         self.model_combo.set_tooltip_text("Model")
         self.model_combo.set_hexpand(True)
         header.append(self.model_combo)
+
+        # Running token total for today, stacked over its "tokens" caption.
+        # A plain label, so it stays part of the Gtk.WindowHandle's drag area
+        # instead of swallowing the press.
+        self.usage_label = Gtk.Label()
+        self.usage_label.set_name("usage-label")
+        self.usage_label.add_css_class("dim-label")
+        self.usage_label.set_justify(Gtk.Justification.CENTER)
+        self.usage_label.set_valign(Gtk.Align.CENTER)
+        header.append(self.usage_label)
 
         gear = Gtk.Button(label="⚙")
         gear.set_tooltip_text("Settings (Ctrl+,)")
@@ -474,10 +487,18 @@ class MainWindow(Gtk.ApplicationWindow):
         contents: list[dict],
         thinking: bool,
     ) -> None:
+        # Filled in place from the reply's `usageMetadata` (see `on_usage`),
+        # then handed to the main thread as an argument of `_finish_stream`.
+        usage_meta: dict = {}
         try:
             first = True
             for delta in stream_generate(
-                api_key, model, system_instruction, contents, thinking=thinking
+                api_key,
+                model,
+                system_instruction,
+                contents,
+                thinking=thinking,
+                on_usage=usage_meta.update,
             ):
                 if self.cancel_flag.is_set():
                     break
@@ -485,7 +506,7 @@ class MainWindow(Gtk.ApplicationWindow):
                     GLib.idle_add(self._clear_thinking_marker)
                     first = False
                 GLib.idle_add(self._append_assistant_delta, delta)
-            GLib.idle_add(self._finish_stream)
+            GLib.idle_add(self._finish_stream, model, dict(usage_meta))
         except GeminiError as e:
             GLib.idle_add(self._show_error, str(e))
         except Exception as e:  # noqa: BLE001
@@ -525,7 +546,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self._scroll_to_end()
         return False
 
-    def _finish_stream(self) -> bool:
+    def _finish_stream(self, model: str = "", usage_meta: dict | None = None) -> bool:
+        usage_meta = usage_meta or {}
         full = "".join(self.current_assistant_buf)
         if full:
             self.history.append({"role": "model", "parts": [{"text": full}]})
@@ -534,10 +556,17 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.get_clipboard().set(full)
                 end = buf.get_end_iter()
                 buf.insert_with_tags_by_name(end, "\n  (copied to clipboard)", "dim")
+            if usage_meta:
+                end = buf.get_end_iter()
+                buf.insert_with_tags_by_name(
+                    end, f"\n  {usage.format_response(usage_meta)}", "dim"
+                )
             buf.insert(buf.get_end_iter(), "\n\n")
         else:
             if self.history and self.history[-1].get("role") == "user":
                 self.history.pop()
+        if usage_meta:
+            self._record_usage(model, usage_meta)
         self._scroll_to_end()
         self.input_view.set_editable(True)
         self.input_view.grab_focus()
@@ -560,6 +589,21 @@ class MainWindow(Gtk.ApplicationWindow):
         mark = buf.create_mark(None, buf.get_end_iter(), False)
         self.response_view.scroll_mark_onscreen(mark)
         buf.delete_mark(mark)
+
+    # ── token accounting ────────────────────────────────────────────────
+
+    def _record_usage(self, model: str, usage_meta: dict) -> None:
+        try:
+            self.usage_data = usage.record(model, usage_meta)
+        except OSError:
+            return  # best-effort: a broken store must never break a reply
+        self._refresh_usage_label()
+
+    def _refresh_usage_label(self) -> None:
+        today = usage.totals(self.usage_data, days=1)
+        count = GLib.markup_escape_text(usage.format_tokens(today["total_tokens"]))
+        self.usage_label.set_markup(f"{count}\n<small>tokens today</small>")
+        self.usage_label.set_tooltip_text(usage.summary(self.usage_data))
 
     # ── settings ────────────────────────────────────────────────────────
 

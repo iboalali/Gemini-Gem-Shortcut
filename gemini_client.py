@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Iterator
+from typing import Callable, Iterator
 
 import httpx
 
@@ -33,6 +33,7 @@ def stream_generate(
     contents: list[dict],
     thinking: bool | None = None,
     timeout: float = 60.0,
+    on_usage: Callable[[dict], None] | None = None,
 ) -> Iterator[str]:
     """Yield text deltas from a streamGenerateContent call.
 
@@ -45,6 +46,10 @@ def stream_generate(
     allows, None leaves the model's default untouched. A level the model
     rejects is retried with the next fallback (see `_THINKING_LEVELS_*`),
     so a Gem's checkbox works across models with different support.
+
+    `on_usage` is called once with the response's `usageMetadata` dict
+    (token counts) after the last delta, and not at all if the stream ends
+    before the API reports one. It runs on the caller's thread.
     """
     if not api_key:
         raise GeminiError("API key is not set. Open settings (gear icon) to add one.")
@@ -66,7 +71,7 @@ def stream_generate(
         else:
             body["generationConfig"] = {"thinkingConfig": {"thinkingLevel": level}}
         try:
-            yield from _stream_once(api_key, model, body, timeout)
+            yield from _stream_once(api_key, model, body, timeout, on_usage)
             return
         except _UnsupportedThinkingLevel:
             if i == len(levels) - 1:
@@ -80,13 +85,26 @@ class _UnsupportedThinkingLevel(Exception):
     """The model rejected the requested `thinkingLevel` (HTTP 400)."""
 
 
-def _stream_once(api_key: str, model: str, body: dict, timeout: float) -> Iterator[str]:
+def _stream_once(
+    api_key: str,
+    model: str,
+    body: dict,
+    timeout: float,
+    on_usage: Callable[[dict], None] | None = None,
+) -> Iterator[str]:
     url = ENDPOINT.format(model=model)
     headers = {
         "x-goog-api-key": api_key,
         "Content-Type": "application/json",
     }
     params = {"alt": "sse"}
+
+    # Every SSE chunk carries a `usageMetadata`, and the counts are cumulative
+    # for the reply so far (`candidatesTokenCount` grows chunk by chunk,
+    # `promptTokenCount` stays put). The last one seen is therefore the total
+    # for the whole reply, and reporting only that one keeps the caller from
+    # adding up the same tokens several times.
+    last_usage: dict | None = None
 
     try:
         with httpx.stream(
@@ -118,11 +136,20 @@ def _stream_once(api_key: str, model: str, body: dict, timeout: float) -> Iterat
                 except json.JSONDecodeError:
                     continue
 
+                usage = chunk.get("usageMetadata")
+                if isinstance(usage, dict):
+                    last_usage = usage
+
                 text = _extract_text(chunk)
                 if text:
                     yield text
     except httpx.HTTPError as e:
         raise GeminiError(f"Network error: {e}") from e
+    finally:
+        # Also runs when the consumer abandons the generator (window closed
+        # mid-stream), which is why it must not touch anything but the callback.
+        if last_usage is not None and on_usage is not None:
+            on_usage(last_usage)
 
 
 def _extract_text(chunk: dict) -> str:
