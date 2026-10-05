@@ -76,7 +76,8 @@ ambiguous), it falls back to the GNOME-configured primary monitor.
   is already scrollable so the input stays visible, but you may want to
   drag the window up. Re-anchoring on every size change would fight
   user drags, so it's deferred to a v2 if it proves annoying.
-- **GNOME version.** `metadata.json` declares `shell-version: ["46"]`.
+- **GNOME version.** `metadata.json` declares `shell-version: ["46", "50"]`
+  (the Ubuntu 24.04 and 26.04 LTS releases).
   If you upgrade GNOME, add the new major version to the array (and
   test). The extension uses the standard GNOME 45+ ESM API and shouldn't
   break on minor positioning APIs across versions.
