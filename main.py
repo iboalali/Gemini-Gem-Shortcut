@@ -9,10 +9,11 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, GLib, GObject, Gio, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, GObject, Gio, Gtk, Pango  # noqa: E402
 
 import config  # noqa: E402
 import usage  # noqa: E402
+import gemini_client  # noqa: E402
 from gemini_client import GeminiError, stream_generate  # noqa: E402
 
 APP_ID = "com.iboalali.GeminiGemShortcut"
@@ -65,6 +66,15 @@ class MainWindow(Gtk.ApplicationWindow):
         self._settings_open = False
         self._close_timeout_id: int | None = None
         self._last_press_time: int = 0  # GLib monotonic µs of the last mouse press on this window
+        self._status_timer_id: int | None = None
+        self._status_phase = ""
+        self._status_model = ""
+        self._request_started: int = 0  # GLib monotonic µs of the current submit
+        self._last_prompt = ""
+        # Bumped by every send and by cancel. Worker callbacks carry the id
+        # they were started with and are dropped once it is stale, so a
+        # canceled request that answers late never writes into the window.
+        self._request_id = 0
 
         self.set_default_size(WINDOW_WIDTH, -1)
         # Spotlight-launcher chrome: no titlebar, no min/max/close buttons.
@@ -295,6 +305,40 @@ class MainWindow(Gtk.ApplicationWindow):
         buf.create_tag("error", foreground="#ff6b6b", style=2)  # italic
         buf.create_tag("dim", foreground="#9a9a9a")
 
+        # Request status. The API sends nothing at all until the first token
+        # is ready, so this row is the only sign that a slow request is
+        # still alive.
+        self.status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        outer.append(self.status_row)
+        self.status_dot = Gtk.Label(label="●")
+        self.status_dot.set_name("status-dot")
+        self.status_dot.add_css_class("idle")
+        self.status_row.append(self.status_dot)
+        self.status_label = Gtk.Label(label="Ready")
+        self.status_label.set_name("status-label")
+        self.status_label.add_css_class("dim-label")
+        self.status_label.set_xalign(0)
+        self.status_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.status_label.set_hexpand(True)
+        self.status_row.append(self.status_label)
+        # Both buttons stay visible and toggle sensitivity instead. Neither
+        # may ever hold focus: making a focused widget insensitive moves focus
+        # out of the window and trips the auto-close.
+        self.retry_button = Gtk.Button(label="Retry")
+        self.retry_button.set_tooltip_text(
+            "Send the same prompt again with the selected Gem and model"
+        )
+        self.retry_button.connect("clicked", lambda *_: self._send(self._last_prompt))
+        self.cancel_button = Gtk.Button(label="Cancel")
+        self.cancel_button.set_tooltip_text("Stop waiting for this reply")
+        self.cancel_button.connect("clicked", lambda *_: self._cancel_request())
+        for btn in (self.retry_button, self.cancel_button):
+            btn.add_css_class("status-button")
+            btn.set_focusable(False)
+            btn.set_focus_on_click(False)
+            btn.set_sensitive(False)
+            self.status_row.append(btn)
+
     # ── helpers ─────────────────────────────────────────────────────────
 
     def _populate_gem_combo(self) -> None:
@@ -386,6 +430,8 @@ class MainWindow(Gtk.ApplicationWindow):
     def _on_close_request(self, *_: object) -> bool:
         # Stop the in-flight stream.
         self.cancel_flag.set()
+        # Same strong-ref problem as the deferred-close timer below.
+        self._stop_status_timer()
         # Cancel any pending deferred-close timer — its GLib source holds a
         # strong ref to our bound method (and therefore this window), which
         # keeps the C widget alive past destroy and prevents the application
@@ -443,10 +489,12 @@ class MainWindow(Gtk.ApplicationWindow):
     def _submit(self) -> None:
         buf = self.input_view.get_buffer()
         text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False).strip()
-        if not text:
-            return
-        if not self.input_view.get_editable():
-            return  # already streaming
+        if text and self._send(text):
+            buf.set_text("")
+
+    def _send(self, text: str) -> bool:
+        if not text or not self.input_view.get_editable():
+            return False  # nothing to send, or already streaming
 
         gem_name = _dropdown_get_text(self.gem_combo) or ""
         gem = config.find_gem(self.cfg, gem_name) or {}
@@ -465,22 +513,31 @@ class MainWindow(Gtk.ApplicationWindow):
         # insensitive would force GTK to move focus away, briefly dropping it
         # out of the window's focus tree and tripping the auto-close.
         self.input_view.set_editable(False)
-        buf.set_text("")
         self.response_frame.set_visible(True)
         self._append_user_echo(text)
         self._append_thinking()
         self.current_assistant_buf = []
         self.cancel_flag = threading.Event()
+        self._request_id += 1
+        self._last_prompt = text
+        self._set_buttons(cancel=True, retry=False)
+        self._start_status(model)
 
         contents_snapshot = [dict(c) for c in self.history]
         threading.Thread(
             target=self._worker,
-            args=(api_key, model, system_instruction, contents_snapshot, thinking),
+            args=(
+                self._request_id, self.cancel_flag,
+                api_key, model, system_instruction, contents_snapshot, thinking,
+            ),
             daemon=True,
         ).start()
+        return True
 
     def _worker(
         self,
+        request_id: int,
+        cancel_flag: threading.Event,
         api_key: str,
         model: str,
         system_instruction: str,
@@ -490,6 +547,10 @@ class MainWindow(Gtk.ApplicationWindow):
         # Filled in place from the reply's `usageMetadata` (see `on_usage`),
         # then handed to the main thread as an argument of `_finish_stream`.
         usage_meta: dict = {}
+
+        def post(fn, *args) -> None:
+            GLib.idle_add(self._run_if_current, request_id, fn, *args)
+
         try:
             first = True
             for delta in stream_generate(
@@ -499,18 +560,50 @@ class MainWindow(Gtk.ApplicationWindow):
                 contents,
                 thinking=thinking,
                 on_usage=usage_meta.update,
+                on_status=lambda phase: post(self._set_status_phase, phase),
             ):
-                if self.cancel_flag.is_set():
+                if cancel_flag.is_set():
                     break
                 if first:
-                    GLib.idle_add(self._clear_thinking_marker)
+                    post(self._clear_thinking_marker)
                     first = False
-                GLib.idle_add(self._append_assistant_delta, delta)
-            GLib.idle_add(self._finish_stream, model, dict(usage_meta))
+                post(self._append_assistant_delta, delta)
+            post(self._finish_stream, model, dict(usage_meta))
         except GeminiError as e:
-            GLib.idle_add(self._show_error, str(e))
+            post(self._show_error, str(e), e.reason)
         except Exception as e:  # noqa: BLE001
-            GLib.idle_add(self._show_error, f"Unexpected error: {e}")
+            post(self._show_error, f"Unexpected error: {e}", "unexpected error")
+        finally:
+            # Unconditional: Google bills a canceled reply's tokens too.
+            if usage_meta:
+                GLib.idle_add(self._record_usage, model, dict(usage_meta))
+
+    def _run_if_current(self, request_id: int, fn, *args) -> bool:
+        if request_id == self._request_id:
+            fn(*args)
+        return False
+
+    def _cancel_request(self) -> None:
+        if self.input_view.get_editable():
+            return  # nothing in flight
+        self.cancel_flag.set()
+        self._request_id += 1
+        self._clear_thinking_marker()
+        buf = self.response_view.get_buffer()
+        # A partial reply ends mid-line; the thinking marker's spot does not.
+        note = "\n  (canceled)\n\n" if self.current_assistant_buf else "  (canceled)\n\n"
+        buf.insert_with_tags_by_name(buf.get_end_iter(), note, "dim")
+        if self.history and self.history[-1].get("role") == "user":
+            self.history.pop()
+        self._end_status("idle", f"Canceled after {self._elapsed_seconds():.0f} s")
+        self._set_buttons(cancel=False, retry=True)
+        self._scroll_to_end()
+        self.input_view.set_editable(True)
+        self.input_view.grab_focus()
+
+    def _set_buttons(self, cancel: bool, retry: bool) -> None:
+        self.cancel_button.set_sensitive(cancel)
+        self.retry_button.set_sensitive(retry)
 
     # ── response UI updates (main thread) ───────────────────────────────
 
@@ -546,8 +639,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._scroll_to_end()
         return False
 
-    def _finish_stream(self, model: str = "", usage_meta: dict | None = None) -> bool:
-        usage_meta = usage_meta or {}
+    def _finish_stream(self, model: str, usage_meta: dict) -> None:
         full = "".join(self.current_assistant_buf)
         if full:
             self.history.append({"role": "model", "parts": [{"text": full}]})
@@ -562,18 +654,21 @@ class MainWindow(Gtk.ApplicationWindow):
                     end, f"\n  {usage.format_response(usage_meta)}", "dim"
                 )
             buf.insert(buf.get_end_iter(), "\n\n")
+            self._end_status("ok", f"Done in {self._elapsed_seconds():.1f} s")
+            self._set_buttons(cancel=False, retry=False)
         else:
             if self.history and self.history[-1].get("role") == "user":
                 self.history.pop()
-        if usage_meta:
-            self._record_usage(model, usage_meta)
+            self._end_status("error", f"{model} sent an empty reply")
+            self._set_buttons(cancel=False, retry=True)
         self._scroll_to_end()
         self.input_view.set_editable(True)
         self.input_view.grab_focus()
-        return False
 
-    def _show_error(self, msg: str) -> bool:
+    def _show_error(self, msg: str, reason: str) -> None:
         self._clear_thinking_marker()
+        self._end_status("error", f"Failed after {self._elapsed_seconds():.0f} s: {reason}")
+        self._set_buttons(cancel=False, retry=True)
         buf = self.response_view.get_buffer()
         end = buf.get_end_iter()
         buf.insert_with_tags_by_name(end, f"  {msg}\n\n", "error")
@@ -582,13 +677,59 @@ class MainWindow(Gtk.ApplicationWindow):
         self._scroll_to_end()
         self.input_view.set_editable(True)
         self.input_view.grab_focus()
-        return False
 
     def _scroll_to_end(self) -> None:
         buf = self.response_view.get_buffer()
         mark = buf.create_mark(None, buf.get_end_iter(), False)
         self.response_view.scroll_mark_onscreen(mark)
         buf.delete_mark(mark)
+
+    # ── request status ──────────────────────────────────────────────────
+
+    def _start_status(self, model: str) -> None:
+        self._stop_status_timer()
+        self._status_model = model
+        self._status_phase = gemini_client.CONNECTING
+        self._request_started = GLib.get_monotonic_time()
+        self._set_status_dot("busy")
+        self._render_status()
+        self._status_timer_id = GLib.timeout_add(1000, self._render_status)
+
+    def _set_status_phase(self, phase: str) -> None:
+        self._status_phase = phase
+        self._render_status()
+
+    def _render_status(self) -> bool:
+        secs = int(self._elapsed_seconds())
+        if self._status_phase == gemini_client.WAITING:
+            text = f"Waiting for {self._status_model} to answer… {secs} s"
+            if secs >= 10:
+                limit = gemini_client.DEFAULT_TIMEOUT
+                text += f" (gives up after {limit:.0f} s of silence)"
+        elif self._status_phase == gemini_client.STREAMING:
+            text = f"Receiving reply from {self._status_model}… {secs} s"
+        else:
+            text = f"Connecting to Google… {secs} s"
+        self.status_label.set_text(text)
+        return True
+
+    def _end_status(self, state: str, text: str) -> None:
+        self._stop_status_timer()
+        self._set_status_dot(state)
+        self.status_label.set_text(text)
+
+    def _stop_status_timer(self) -> None:
+        if self._status_timer_id is not None:
+            GLib.source_remove(self._status_timer_id)
+            self._status_timer_id = None
+
+    def _set_status_dot(self, state: str) -> None:
+        for cls in ("idle", "busy", "ok", "error"):
+            self.status_dot.remove_css_class(cls)
+        self.status_dot.add_css_class(state)
+
+    def _elapsed_seconds(self) -> float:
+        return (GLib.get_monotonic_time() - self._request_started) / 1_000_000
 
     # ── token accounting ────────────────────────────────────────────────
 

@@ -170,6 +170,42 @@ How the accumulation works:
 4. `_record_usage` swallows `OSError`: an unwritable store must never break a
    reply.
 
+**The status row is the only sign a slow request is alive.** The API sends its
+response headers together with the first token, so a model that takes 20 s to
+start (measured 2026-10 on `gemini-3.5-flash-lite`) is silent on the wire,
+exactly like a stalled one. `stream_generate(..., on_status=cb)` reports
+`CONNECTING` and `WAITING` from an httpx `trace` extension (TCP connect
+started, request body sent) and `STREAMING` on the first text. That is what
+separates "can't reach Google" from "the model is slow". `on_status` runs on
+the worker thread like `on_usage`, so `_worker` forwards it through
+`GLib.idle_add`. The 1 s elapsed-time ticker (`_status_timer_id`) is a GLib
+source holding a strong ref to the window, so `_on_close_request` removes it
+for the same reason it removes the deferred-close timer. The connect timeout
+is a short `CONNECT_TIMEOUT` (10 s) so a dead network fails fast; the read
+timeout stays at `DEFAULT_TIMEOUT` (60 s of silence). Each `GeminiError`
+carries a short `reason` for the status line ("model overloaded", "not on
+your plan", "rate limit reached, retry in 14h18m24s"); the full message still
+goes to the response area.
+
+**Retry and Cancel are always visible and toggle sensitivity.** Cancel is
+active only while a request is in flight; Retry only after a failure, an empty
+reply or a cancel. Retry resends `_last_prompt` through `_send` with the Gem
+and model selected at click time, so switching away from an overloaded model
+first works. `_send` leaves the input buffer alone (only `_submit` clears it),
+so a draft typed after the failure survives a retry. Both buttons are
+`set_focusable(False)`: making a focused widget insensitive pushes focus out
+of the window and trips the auto-close (same trap as `set_sensitive(False)` on
+the input).
+
+Cancel cannot interrupt the worker, which is blocked in a socket read that
+httpx cannot abort from another thread. Instead `_cancel_request` bumps
+`_request_id`, and every worker callback goes through `_run_if_current`,
+which drops it when its id is stale. The abandoned thread ends on its own
+(reply or read timeout) without touching the window. The worker gets its own
+`cancel_flag` as an argument rather than reading `self.cancel_flag`, which a
+retry has already replaced. Usage is recorded from the worker's `finally`
+outside the id check, because a canceled reply's tokens are billed anyway.
+
 **Clipboard paths are two-tier.** `Ctrl+C` is handled at the window level
 (`_copy_response_selection`) so a mouse-selection in the read-only response
 view copies even though the focused widget is the input. The window's key

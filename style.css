@@ -254,6 +254,33 @@ button.suggested-action:disabled {
     padding: 0 4px;
 }
 
+#status-label,
+#status-dot {
+    font-size: 9pt;
+}
+
+#status-dot.idle {
+    color: #666666;
+}
+
+#status-dot.busy {
+    color: #f5c211;
+}
+
+#status-dot.ok {
+    color: #57e389;
+}
+
+#status-dot.error {
+    color: #ff6b6b;
+}
+
+button.status-button {
+    font-size: 9pt;
+    min-height: 0;
+    padding: 2px 10px;
+}
+
 /* Entry fields in the settings window. */
 entry {
     background-color: #242424;

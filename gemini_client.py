@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Callable, Iterator
 
 import httpx
@@ -21,9 +22,27 @@ ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:stre
 _THINKING_LEVELS_ON: tuple[str | None, ...] = ("high", None)
 _THINKING_LEVELS_OFF: tuple[str | None, ...] = ("minimal", "low", None)
 
+DEFAULT_TIMEOUT = 60.0
+# Short, so a missing network fails fast instead of looking like a slow model.
+CONNECT_TIMEOUT = 10.0
+
+# Phases reported through `on_status`. The API sends its response headers
+# together with the first token, so between WAITING and STREAMING nothing
+# arrives at all: a slow model and a stalled one look the same on the wire.
+CONNECTING = "connecting"
+WAITING = "waiting"
+STREAMING = "streaming"
+
 
 class GeminiError(RuntimeError):
-    """Raised when the API returns an error or the response can't be parsed."""
+    """Raised when the API returns an error or the response can't be parsed.
+
+    `reason` is a few words fit for a status line; the message has the detail.
+    """
+
+    def __init__(self, message: str, reason: str | None = None) -> None:
+        super().__init__(message)
+        self.reason = reason or message
 
 
 def stream_generate(
@@ -32,8 +51,9 @@ def stream_generate(
     system_instruction: str,
     contents: list[dict],
     thinking: bool | None = None,
-    timeout: float = 60.0,
+    timeout: float = DEFAULT_TIMEOUT,
     on_usage: Callable[[dict], None] | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> Iterator[str]:
     """Yield text deltas from a streamGenerateContent call.
 
@@ -50,9 +70,15 @@ def stream_generate(
     `on_usage` is called once with the response's `usageMetadata` dict
     (token counts) after the last delta, and not at all if the stream ends
     before the API reports one. It runs on the caller's thread.
+
+    `on_status` is called with CONNECTING, WAITING and STREAMING as the
+    request progresses, also on the caller's thread. A thinking-level retry
+    starts again from CONNECTING.
     """
     if not api_key:
-        raise GeminiError("API key is not set. Open settings (gear icon) to add one.")
+        raise GeminiError(
+            "API key is not set. Open settings (gear icon) to add one.", "no API key"
+        )
 
     body: dict = {"contents": contents}
     if system_instruction.strip():
@@ -71,12 +97,13 @@ def stream_generate(
         else:
             body["generationConfig"] = {"thinkingConfig": {"thinkingLevel": level}}
         try:
-            yield from _stream_once(api_key, model, body, timeout, on_usage)
+            yield from _stream_once(api_key, model, body, timeout, on_usage, on_status)
             return
         except _UnsupportedThinkingLevel:
             if i == len(levels) - 1:
                 raise GeminiError(
-                    f"Model {model} rejected every thinking level, including none."
+                    f"Model {model} rejected every thinking level, including none.",
+                    "thinking level rejected",
                 )
             continue
 
@@ -91,6 +118,7 @@ def _stream_once(
     body: dict,
     timeout: float,
     on_usage: Callable[[dict], None] | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> Iterator[str]:
     url = ENDPOINT.format(model=model)
     headers = {
@@ -106,10 +134,23 @@ def _stream_once(
     # adding up the same tokens several times.
     last_usage: dict | None = None
 
+    def report(status: str) -> None:
+        if on_status is not None:
+            on_status(status)
+
+    def trace(event: str, _info: dict) -> None:
+        if event == "connection.connect_tcp.started":
+            report(CONNECTING)
+        elif event.endswith(".send_request_body.complete"):
+            report(WAITING)
+
+    streaming = False
     try:
-        with httpx.stream(
-            "POST", url, headers=headers, params=params, json=body, timeout=timeout
-        ) as r:
+        with httpx.Client(timeout=httpx.Timeout(timeout, connect=CONNECT_TIMEOUT)) as client, \
+                client.stream(
+                    "POST", url, headers=headers, params=params, json=body,
+                    extensions={"trace": trace},
+                ) as r:
             if r.status_code != 200:
                 # Drain the body so we can include the message.
                 detail = r.read().decode("utf-8", errors="replace")
@@ -123,7 +164,10 @@ def _stream_once(
                     and "thinking level" in detail.lower()
                 ):
                     raise _UnsupportedThinkingLevel()
-                raise GeminiError(_format_http_error(r.status_code, detail))
+                raise GeminiError(
+                    _format_http_error(r.status_code, detail),
+                    _http_reason(r.status_code, detail),
+                )
 
             for line in r.iter_lines():
                 if not line or not line.startswith("data:"):
@@ -142,9 +186,32 @@ def _stream_once(
 
                 text = _extract_text(chunk)
                 if text:
+                    if not streaming:
+                        streaming = True
+                        report(STREAMING)
                     yield text
+    except httpx.ConnectTimeout as e:
+        raise GeminiError(
+            f"Could not reach Google within {CONNECT_TIMEOUT:.0f} s. Check the network.",
+            "can't reach Google",
+        ) from e
+    except httpx.ConnectError as e:
+        raise GeminiError(
+            f"Could not connect to Google: {e}. Check the network.", "no connection"
+        ) from e
+    except httpx.ReadTimeout as e:
+        if streaming:
+            raise GeminiError(
+                f"{model} stopped sending for {timeout:.0f} s in the middle of the reply.",
+                "reply stalled",
+            ) from e
+        raise GeminiError(
+            f"{model} sent nothing for {timeout:.0f} s, so the request was dropped. "
+            "The model is probably overloaded: try again or pick another model.",
+            "no answer from the model",
+        ) from e
     except httpx.HTTPError as e:
-        raise GeminiError(f"Network error: {e}") from e
+        raise GeminiError(f"Network error: {e}", "network error") from e
     finally:
         # Also runs when the consumer abandons the generator (window closed
         # mid-stream), which is why it must not touch anything but the callback.
@@ -158,6 +225,25 @@ def _extract_text(chunk: dict) -> str:
         return ""
     parts = (candidates[0].get("content") or {}).get("parts") or []
     return "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+
+
+def _http_reason(status: int, body: str) -> str:
+    if status == 503:
+        return "model overloaded"
+    if status == 429:
+        # `limit: 0` is a hard zero allowance (e.g. Pro on the free tier),
+        # not a throttle that waiting would lift.
+        if "limit: 0" in body:
+            return "not on your plan"
+        wait = re.search(r"retry in ((?:\d+[hm])*\d+)(?:\.\d+)?s", body)
+        return f"rate limit reached, retry in {wait.group(1)}s" if wait else "rate limit reached"
+    if status in (400, 403) and "api key" in body.lower():
+        return "API key rejected"
+    if status == 404:
+        return "model not found"
+    if status >= 500:
+        return "server error at Google"
+    return f"HTTP {status}"
 
 
 def _format_http_error(status: int, body: str) -> str:
