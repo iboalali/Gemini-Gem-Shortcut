@@ -102,6 +102,20 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 - Pressing the keyboard shortcut while the window is open just refocuses it
   (single-instance via `GApplication`).
 
+## Request status, Retry and Cancel
+
+A status row at the bottom of the window shows what the current request is doing, with a colored dot and a seconds counter:
+
+- **Connecting:** opening the connection to Google. If no connection is made within 10 s, the request fails with "can't reach Google".
+- **Waiting for the model:** the request was sent and the model has not started answering. Some models take 20 s or more before the first word, and nothing comes back over the network until then. After 60 s of silence the request fails with "no answer from the model".
+- **Streaming:** the reply is arriving.
+- **Done in X s**, **Canceled after X s** or **Failed after X s: reason.** The reason is a short summary such as "model overloaded", "rate limit reached, retry in 14h18m24s", "not on your plan" or "API key rejected". The full error message appears in the response area.
+
+The **Retry** and **Cancel** buttons are always shown, and each is only clickable when it applies:
+
+- **Cancel** works while a request is running. The partial reply stays on screen, marked "(canceled)", and the prompt is dropped from the conversation.
+- **Retry** works after a failure, an empty reply or a cancel. It sends the last prompt again with the Gem and model selected *at the time you click*, so you can switch away from an overloaded model first. Text you have typed in the input in the meantime is kept.
+
 ## Token usage
 
 Each reply is followed by its own token count, and the header shows the running
@@ -126,7 +140,7 @@ API has no usage or quota endpoint, so nothing can be reconstructed after the
 fact. Delete the file to reset the counters.
 
 Two things it does not see: replies you cut off by closing the window mid-stream,
-and any other use of the same API key. For an authoritative number, check
+and any other use of the same API key. A canceled reply is counted only up to the point where you canceled it. For an authoritative number, check
 <https://ai.dev/rate-limit>.
 
 ## Config
