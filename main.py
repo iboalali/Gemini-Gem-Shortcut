@@ -17,8 +17,9 @@ import gemini_client  # noqa: E402
 from gemini_client import GeminiError, stream_generate  # noqa: E402
 
 APP_ID = "com.iboalali.GeminiGemShortcut"
-WINDOW_WIDTH = 640
+WINDOW_WIDTH = 680
 CSS_PATH = Path(__file__).parent / "style.css"
+HEADER_ICON_PATH = Path(__file__).parent / "data" / "app-icon-tile.svg"
 
 
 def _make_dropdown() -> Gtk.DropDown:
@@ -220,9 +221,26 @@ class MainWindow(Gtk.ApplicationWindow):
         outer.set_margin_end(10)
         handle.set_child(outer)
 
-        # Top row: gem combo, model combo, gear button.
+        # Top row: app icon, gem combo, model combo, usage, gear button.
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         outer.append(header)
+
+        icon_file = Gio.File.new_for_path(str(HEADER_ICON_PATH))
+        app_icon = Gtk.Image.new_from_gicon(Gio.FileIcon.new(icon_file))
+        app_icon.set_name("app-icon")
+
+        self.icon_shine = Gtk.Box()
+        self.icon_shine.set_name("app-icon-shine")
+        self.icon_shine.set_can_target(False)
+
+        icon_overlay = Gtk.Overlay()
+        icon_overlay.set_child(app_icon)
+        icon_overlay.add_overlay(self.icon_shine)
+        icon_overlay.set_valign(Gtk.Align.CENTER)
+        icon_click = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
+        icon_click.connect("pressed", self._on_icon_pressed)
+        icon_overlay.add_controller(icon_click)
+        header.append(icon_overlay)
 
         self.gem_combo = _make_dropdown()
         self.gem_combo.set_tooltip_text("Gem (system instruction preset)")
@@ -234,6 +252,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.model_combo.set_tooltip_text("Model")
         self.model_combo.set_hexpand(True)
         header.append(self.model_combo)
+
+        app_icon.set_pixel_size(self.gem_combo.measure(Gtk.Orientation.VERTICAL, -1)[1])
 
         # Running token total for today, stacked over its "tokens" caption.
         # A plain label, so it stays part of the Gtk.WindowHandle's drag area
@@ -362,6 +382,16 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.model_combo.set_selected(models.index(default_model))
             elif models:
                 self.model_combo.set_selected(0)
+
+    def _on_icon_pressed(self, *_args) -> None:
+        # GTK restarts a CSS animation only when its name changes, so each press
+        # swaps between two identical animations.
+        if self.icon_shine.has_css_class("shine-a"):
+            self.icon_shine.remove_css_class("shine-a")
+            self.icon_shine.add_css_class("shine-b")
+        else:
+            self.icon_shine.remove_css_class("shine-b")
+            self.icon_shine.add_css_class("shine-a")
 
     def _on_gem_changed(self, _dd: Gtk.DropDown) -> None:
         name = _dropdown_get_text(self.gem_combo)

@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 - **App icon** for the dash: a gem in the Gemini colors with the Gemini sparkle. `data/install.sh` installs it with a launcher entry.
+- The app icon in the top-left corner of the main window, left of the Gem dropdown. The window is 40 px wider (680 px) to make room.
+- Clicking the header icon sends a 500 ms shine diagonally across it.
 - Per-Gem **Thinking** checkbox (`thinking`). On requests the model's highest
   thinking level, off requests the lowest it allows. Levels a model rejects
   fall back automatically, so the checkbox works across models with
