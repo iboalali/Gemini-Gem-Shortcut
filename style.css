@@ -264,6 +264,8 @@ button.suggested-action:disabled {
 }
 
 /* Shine that sweeps diagonally across the header icon when it is clicked.
+ * It also plays once on its own when the window has finished appearing
+ * (timed in main.py).
  * GTK does not animate background-position, but it does interpolate between
  * two gradients with the same number of stops, so the animation moves the
  * stops: the bright band starts before the top-left corner and ends past the

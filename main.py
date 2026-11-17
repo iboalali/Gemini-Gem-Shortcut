@@ -20,6 +20,11 @@ APP_ID = "com.iboalali.GeminiGemShortcut"
 WINDOW_WIDTH = 680
 CSS_PATH = Path(__file__).parent / "style.css"
 HEADER_ICON_PATH = Path(__file__).parent / "data" / "app-icon-tile.svg"
+# GNOME Shell's SHOW_WINDOW_ANIMATION_TIME (ui/windowManager.js) plus a short
+# pause, counted from the compositor's first presentation of the window.
+OPEN_SHINE_DELAY_US = (150 + 100) * 1000
+# Fallback for a compositor that never reports a presentation time.
+OPEN_SHINE_TIMEOUT_US = 1_000_000
 
 
 def _make_dropdown() -> Gtk.DropDown:
@@ -119,6 +124,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.add_controller(press_ctrl)
 
         self.connect("close-request", self._on_close_request)
+        self._open_shine_frame: int | None = None
+        self._open_shine_start_us = 0
+        self._open_shine_tick_id: int | None = self.add_tick_callback(self._open_shine_tick)
 
         self._build_ui()
         self._populate_gem_combo()
@@ -384,7 +392,10 @@ class MainWindow(Gtk.ApplicationWindow):
                 self.model_combo.set_selected(0)
 
     def _on_icon_pressed(self, *_args) -> None:
-        # GTK restarts a CSS animation only when its name changes, so each press
+        self._play_icon_shine()
+
+    def _play_icon_shine(self) -> None:
+        # GTK restarts a CSS animation only when its name changes, so each run
         # swaps between two identical animations.
         if self.icon_shine.has_css_class("shine-a"):
             self.icon_shine.remove_css_class("shine-a")
@@ -392,6 +403,24 @@ class MainWindow(Gtk.ApplicationWindow):
         else:
             self.icon_shine.remove_css_class("shine-b")
             self.icon_shine.add_css_class("shine-a")
+
+    def _open_shine_tick(self, _widget: Gtk.Widget, clock: Gdk.FrameClock) -> bool:
+        # GTK maps the window before the compositor shows it, and GNOME Shell
+        # then animates it in. The window is fully visible only once the first
+        # frame is presented and that animation has run.
+        now = clock.get_frame_time()
+        if self._open_shine_frame is None:
+            self._open_shine_frame = clock.get_frame_counter()
+            self._open_shine_start_us = now
+            return GLib.SOURCE_CONTINUE
+        if self._open_shine_start_us > now - OPEN_SHINE_TIMEOUT_US:
+            timings = clock.get_timings(self._open_shine_frame)
+            presented = timings.get_presentation_time() if timings and timings.get_complete() else 0
+            if not presented or now < presented + OPEN_SHINE_DELAY_US:
+                return GLib.SOURCE_CONTINUE
+        self._open_shine_tick_id = None
+        self._play_icon_shine()
+        return GLib.SOURCE_REMOVE
 
     def _on_gem_changed(self, _dd: Gtk.DropDown) -> None:
         name = _dropdown_get_text(self.gem_combo)
@@ -470,6 +499,9 @@ class MainWindow(Gtk.ApplicationWindow):
         if self._close_timeout_id is not None:
             GLib.source_remove(self._close_timeout_id)
             self._close_timeout_id = None
+        if self._open_shine_tick_id is not None:
+            self.remove_tick_callback(self._open_shine_tick_id)
+            self._open_shine_tick_id = None
         # Drop the app's reference to us so a subsequent activation builds
         # a fresh window instead of presenting a destroyed one.
         if self.app.window is self:
