@@ -134,7 +134,7 @@ Model IDs live in two places; change both: `DEFAULT_CONFIG` in `config.py` (the 
 
 **Verify against the API, not docs or memory.** `GET …/v1beta/models?key=$KEY` lists what the key can address. Then stream one token through `gemini_client.stream_generate` for each ID, because being listed doesn't mean it works:
 
-- Every `*-pro*` ID returns `HTTP 429 … limit: 0` on a free key. `limit: 0` is a hard zero allowance, not throttling, and retrying never helps. Keeping a Pro entry is deliberate: it works once billing is enabled.
+- Every `*-pro*` ID returns `HTTP 429 … limit: 0` on a free key, and so do `gemini-4-argon`, `gemini-4-carbon` and the `gemini-omni-*-flash` line (checked 2026-11-17). `limit: 0` is a hard zero allowance, not throttling, and retrying never helps. Keeping these entries is deliberate: they work once billing is enabled. `gemini-4-hydrogen` has a free-tier allowance.
 - Unversioned aliases (`gemini-flash-latest`, `gemini-pro-latest`) float to the newest model in their tier. Prefer pinned IDs so an upstream swap can't change behavior silently.
 - Some models share a daily quota: on 2026-10-20 a 429 from `gemini-3.7-flash` named the 20 requests/day limit of `gemini-3.8-flash`.
 

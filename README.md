@@ -162,7 +162,7 @@ and any other use of the same API key. A canceled reply is counted only up to th
   "api_key": "AIza...",
   "default_model": "gemini-3.5-flash-lite",
   "default_gem": "General",
-  "models": ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-argon"],
+  "models": ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-hydrogen", "gemini-4-argon", "gemini-4-carbon"],
   "gems": [
     {"name": "General", "system_instruction": "", "default_model": null, "auto_copy": false, "auto_paste_clipboard": false, "auto_paste_selection": false, "thinking": false},
     {"name": "Translator → DE", "system_instruction": "Translate to German.", "default_model": null, "auto_copy": true, "auto_paste_clipboard": false, "auto_paste_selection": true, "thinking": false}
@@ -178,11 +178,7 @@ Two things to know about the model list:
   filled in from the defaults, but a `models` list you already have is left
   alone — so a newer default lineup only reaches you on a fresh install. Edit
   the list in settings (or in the file) to pick up newer models.
-- **Pro models require a paid tier.** On a free API key, `*-pro*` requests fail
-  with `HTTP 429 … limit: 0` (a hard zero allowance, not a temporary throttle).
-  The Flash and Flash-Lite entries work on the free tier. Run
-  `curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY"`
-  to see every model your key can address.
+- **Some models require a paid tier.** On a free API key, `*-pro*`, `gemini-4-argon` and `gemini-4-carbon` requests fail with `HTTP 429 … limit: 0` (a hard zero allowance, not a temporary throttle). The Flash, Flash-Lite and `gemini-4-hydrogen` entries work on the free tier. Run `curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY"` to see every model your key can address.
 
 ## Optional: bottom-anchored window position
 

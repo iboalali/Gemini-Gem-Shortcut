@@ -29,6 +29,7 @@ All notable changes to this project are documented here. The format is based on
 - Focus-out auto-close (spotlight-launcher behavior) with drag-aware debounce.
 
 ### Changed
+- Added `gemini-4-hydrogen` and `gemini-4-carbon` to the default models. `gemini-4-carbon`, like `gemini-4-argon`, needs a paid tier.
 - Refreshed the default model list to the current Gemini lineup, including
   `gemini-3.7-flash` and `gemini-3.8-flash`.
 
