@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **App icon** for the dash: a gem in the Gemini colors with the Gemini sparkle. `data/install.sh` installs it with a launcher entry.
 - Per-Gem **Thinking** checkbox (`thinking`). On requests the model's highest
   thinking level, off requests the lowest it allows. Levels a model rejects
   fall back automatically, so the checkbox works across models with

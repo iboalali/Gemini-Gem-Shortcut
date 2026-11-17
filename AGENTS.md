@@ -12,6 +12,7 @@ A GTK4 launcher window for Ubuntu GNOME (Wayland) that streams replies from the 
 - `usage.py`: local token accounting in `~/.config/gemini-gem-shortcut/usage.json` (mode 0600), bucketed by day and model, pruned to `RETENTION_DAYS`. Also owns the display formatting (`format_tokens`, `format_response`, `summary`) so `main.py` stays UI-only.
 - `run.sh`: what the GNOME keyboard shortcut binds to. `exec`s `.venv/bin/python main.py`.
 - `style.css`: dark Spotlight-style theme, loaded once by `GeminiGemApp._load_css` at `STYLE_PROVIDER_PRIORITY_APPLICATION`. Relaunch to see edits.
+- `data/`: the app icon (`com.iboalali.GeminiGemShortcut.svg`), the launcher entry template (`com.iboalali.GeminiGemShortcut.desktop.in`) and `install.sh`, which installs both into `~/.local/share/` with `Exec=` pointing at this checkout's `run.sh`. GNOME matches the window to the launcher entry by Wayland app-id, so the `.desktop` file name and `StartupWMClass` must equal `APP_ID` in `main.py`. Without it the dash shows a generic icon.
 - `extension/gemini-gem-shortcut@iboalali.com/`: optional GNOME Shell extension (GJS, GNOME 45+ ESM) that bottom-anchors the window. The Python app knows nothing about it. See `extension/README.md` and `extension/install.sh`.
 
 ## Run and verify
@@ -100,7 +101,7 @@ How the counting works:
 
 ## GNOME Shell extension
 
-**Placement happens on the window manager's `map` signal, not `display::window-created`.** At creation a Wayland GTK window has no real frame size, and a `move_frame()` before mapping doesn't stick (the window lands top-left). The target monitor is captured at `window-created`, before the launcher takes focus. Matching is by app-id, so `APP_ID` in `main.py` and `TARGET_APP_ID` in `extension.js` must stay in sync.
+**Placement happens on the window manager's `map` signal, not `display::window-created`.** At creation a Wayland GTK window has no real frame size, and a `move_frame()` before mapping doesn't stick (the window lands top-left). The target monitor is captured at `window-created`, before the launcher takes focus. Matching is by app-id, so `APP_ID` in `main.py`, `TARGET_APP_ID` in `extension.js` and the file names in `data/` must stay in sync.
 
 **The two GNOME resource imports use different paths:**
 

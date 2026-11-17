@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Gemini Gem Shortcut
+Comment=Ask Gemini through a Gem preset
+Exec="@RUN_SH@"
+Icon=com.iboalali.GeminiGemShortcut
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+StartupWMClass=com.iboalali.GeminiGemShortcut

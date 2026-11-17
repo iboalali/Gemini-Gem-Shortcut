@@ -69,6 +69,16 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY" command "$(pwd)/run.sh"
 gsettings set "$SCHEMA.custom-keybinding:$KEY" binding '<Ctrl><Alt>g'
 ```
 
+## App icon in the dash
+
+Install the launcher entry and icon so GNOME shows the app's icon in the dash and in Activities:
+
+```bash
+./data/install.sh
+```
+
+It writes `~/.local/share/applications/com.iboalali.GeminiGemShortcut.desktop`, pointing at this checkout's `run.sh`, and `~/.local/share/icons/hicolor/scalable/apps/com.iboalali.GeminiGemShortcut.svg`. Re-run it after moving the project folder. No logout is needed.
+
 ## Usage
 
 - `Enter` — submit the prompt
