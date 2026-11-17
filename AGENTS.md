@@ -29,7 +29,8 @@ python3 -m venv --system-site-packages .venv
 # Import smoke test: catches syntax and GTK4 API mistakes without a window
 .venv/bin/python -c "import config, gemini_client, main; print('ok')"
 
-# GUI smoke test: window shows for 2 s, exits 0 if clean
+# GUI smoke test: window shows for 2 s, then timeout sends SIGTERM.
+# Exit 143 with no traceback is clean; any other code or output means startup failed.
 timeout --preserve-status 2 ./run.sh
 ```
 
