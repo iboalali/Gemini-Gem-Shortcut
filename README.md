@@ -114,53 +114,71 @@ It writes `~/.local/share/applications/com.iboalali.GeminiGemShortcut.desktop`, 
 
 ## Command line
 
-`cli.sh` sends one prompt without opening a window and streams the reply to stdout. Each call is a single turn with no conversation history. It has three modes, chosen by the first argument.
+`gemini-gem` sends one prompt without opening a window and streams the reply to stdout. Each call is a single turn with no conversation history. It has three modes, chosen by the first argument.
+
+### Install the `gemini-gem` command
+
+Link `cli.sh` into `~/.local/bin`, from the project directory:
+
+```bash
+ln -sfn "$(pwd)/cli.sh" ~/.local/bin/gemini-gem
+gemini-gem --version   # prints "gemini-gem 0.1.0"
+```
+
+The link points at this checkout, so `git pull` updates the command, and moving the project folder needs the `ln` again. `cli.sh` finds the project's `.venv` through the link, so the command works from any directory. On Ubuntu, `~/.profile` puts `~/.local/bin` on `PATH` at login if the folder existed then. If `command -v gemini-gem` prints nothing, log out and in once. The examples below use `gemini-gem`; `./cli.sh` from the project directory works the same.
+
+For another program, run `gemini-gem` by name, or the absolute path of `cli.sh` if `~/.local/bin` might not be on its `PATH` (a desktop launcher, a systemd unit).
 
 ### Gem mode
 
 Uses the Gems and models from the app's config, like the window does.
 
 ```bash
-./cli.sh "What is the capital of Australia?"
-./cli.sh -g "Gramatik Gem" "their going too the store"
-./cli.sh -m gemini-3.8-flash --thinking "Plan a 3-day trip to Lisbon"
+gemini-gem "What is the capital of Australia?"
+gemini-gem -g "Gramatik Gem" "their going too the store"
+gemini-gem -m gemini-3.8-flash --thinking "Plan a 3-day trip to Lisbon"
 
 # No prompt argument: the whole prompt comes from stdin
-wl-paste | ./cli.sh -g "Gramatik Gem"
+wl-paste | gemini-gem -g "Gramatik Gem"
 
 # "-" inserts stdin at that spot in the prompt
-cat notes.txt | ./cli.sh "Summarize these notes:" -
+cat notes.txt | gemini-gem "Summarize these notes:" -
 
-./cli.sh --list-gems
-./cli.sh --list-models   # the models in the config, not the API's list
-./cli.sh --usage
+gemini-gem --list-gems
+gemini-gem --list-models   # the models in the config, not the API's list
+gemini-gem --usage
 ```
 
 - `-g`, `--gem NAME`: the Gem to use. Default: the config's `default_gem`.
 - `-m`, `--model ID`: the model. Default: the Gem's default model, the same one the window would pick. Any model ID works here, not only the ones in `models`.
 - `--thinking` / `--no-thinking`: override the Gem's Thinking checkbox.
 
-To send a prompt that starts with `ask` or `models` in this mode, put `--` first: `./cli.sh -- models of the solar system`.
+To send a prompt that starts with `ask` or `models` in this mode, put `--` first: `gemini-gem -- models of the solar system`.
 
 ### `ask`: plain Gemini API call
 
 Only the API key comes from the config. No Gem, default model or other setting applies. The arguments are the model, the system instruction and the question, in that order:
 
 ```bash
-./cli.sh ask gemini-3.8-flash "You are a terse Linux expert." "How do I list open ports?"
-./cli.sh ask gemini-3.5-flash-lite "" "No system instruction: pass an empty string"
-git diff | ./cli.sh ask gemini-3.8-flash "You review code." "Review this diff:" -
+gemini-gem ask gemini-3.8-flash "You are a terse Linux expert." "How do I list open ports?"
+gemini-gem ask gemini-3.5-flash-lite "" "No system instruction: pass an empty string"
+git diff | gemini-gem ask gemini-3.8-flash "You review code." "Review this diff:" -
+
+# System instruction from a file: the SYSTEM argument is left out
+wl-paste | gemini-gem ask --no-thinking --system-file ~/proofread.txt gemini-3.5-flash-lite -
 ```
+
+`-s`, `--system-file FILE` reads the system instruction from a UTF-8 file instead. That keeps a long instruction off the command line and out of `ps`, and its text is never mistaken for an option. Passed as an argument, a system instruction that starts with `-` needs `--` before the model: `gemini-gem ask -- gemini-3.8-flash "-x" "question"`.
 
 The question's words are joined with spaces, and `-` reads stdin, as in Gem mode. Without `--thinking` / `--no-thinking`, the model uses its own default thinking level.
 
 ### `models`: what the API key can use
 
 ```bash
-./cli.sh models            # one model ID per line
-./cli.sh models --long     # plus display name and input/output token limits
-./cli.sh models --json     # the API's full model entries
-./cli.sh models --refresh  # skip the cache
+gemini-gem models            # one model ID per line
+gemini-gem models --long     # plus display name and input/output token limits
+gemini-gem models --json     # the API's full model entries
+gemini-gem models --refresh  # skip the cache
 ```
 
 It lists every model the key can call `generateContent` on, which is what `ask` uses. Embedding-only models are left out. The answer is cached for 24 h in `~/.cache/gemini-gem-shortcut/models.json`. The cache stores a hash of the API key, not the key, and a different key fetches a fresh list. When the API can't be reached, the CLI shows the last cached list with a warning. Being listed doesn't mean a model works on your plan: on a free key, some listed models fail with `HTTP 429 … limit: 0` (see [Known limitations](#known-limitations--future-work)).
@@ -170,15 +188,10 @@ It lists every model the key can call `generateContent` on, which is what `ask` 
 - `-c`, `--copy`: also copy the full reply to the clipboard with `wl-copy`.
 - `-v`, `--verbose`: print the model (and Gem) and the reply's token count to stderr.
 
-`./cli.sh --version` prints `gemini-gem 0.1.0` and exits 0. It makes no network call and reads no config, so it is a cheap check that the CLI and its venv work.
+`gemini-gem --version` prints `gemini-gem 0.1.0` and exits 0. It makes no network call and reads no config, so it is a cheap check that the CLI and its venv work.
 
 Stdin is read only when there is no prompt argument or an argument is `-`, so a script whose stdin never closes does not hang. While waiting for the first token, a status line ("connecting…", "waiting for the model…") appears on stderr when stderr is a terminal. Errors go to stderr with exit code 1, usage errors exit with 2, and Ctrl+C exits with 130. Tokens are added to the same daily usage totals as the window, including those of a reply cut off by Ctrl+C.
 
-To call it from anywhere, symlink it into your `PATH`:
-
-```bash
-ln -s "$(pwd)/cli.sh" ~/.local/bin/gemini-gem
-```
 
 *Note on `--copy`:* GNOME does not support the Wayland protocol that lets a background tool set the clipboard. `wl-copy` works around that by opening a 1×1 window and waiting for focus, and GNOME does not focus it when it is started from a script. The reply is still printed, `--copy` then prints a warning after 5 s and the exit code stays 0.
 

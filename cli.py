@@ -88,20 +88,47 @@ def _gem_parser() -> argparse.ArgumentParser:
 def _ask_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gemini-gem ask",
+        usage=(
+            "gemini-gem ask [options] MODEL SYSTEM QUESTION...\n"
+            "       gemini-gem ask [options] --system-file FILE MODEL QUESTION..."
+        ),
         description=(
             "Call the Gemini API directly. Only the API key is taken from the config; "
-            "no Gem, model default or other setting applies."
+            "no Gem, model default or other setting applies. The system instruction is "
+            "the argument after MODEL, or the contents of --system-file, in which case "
+            "that argument is left out. Put '--' before MODEL when SYSTEM may start with '-'."
         ),
     )
-    parser.add_argument("model", help="model ID, e.g. gemini-3.8-flash (see 'gemini-gem models')")
-    parser.add_argument("system", help="system instruction; pass '' for none")
     parser.add_argument(
-        "question", nargs="+", help="the question (words are joined with spaces, '-' is stdin)"
+        "model", metavar="MODEL", help="model ID, e.g. gemini-3.8-flash (see 'gemini-gem models')"
+    )
+    parser.add_argument(
+        "rest",
+        nargs="*",
+        metavar="SYSTEM QUESTION",
+        help="system instruction ('' for none), then the question "
+        "(words are joined with spaces, '-' is stdin)",
+    )
+    parser.add_argument(
+        "-s",
+        "--system-file",
+        metavar="FILE",
+        help="read the system instruction from FILE (UTF-8) instead of the SYSTEM argument",
     )
     _add_reply_options(
         parser, "ask for the model's highest or lowest thinking level (default: the model's own)"
     )
     return parser
+
+
+def _read_system_file(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError as e:
+        reason = e.strerror or str(e)
+        raise GeminiError(f"Could not read the system file {path}: {reason}", "bad system file") from e
+    except UnicodeDecodeError as e:
+        raise GeminiError(f"The system file {path} is not UTF-8 text.", "bad system file") from e
 
 
 def _models_parser() -> argparse.ArgumentParser:
@@ -323,14 +350,23 @@ def _run_gem(argv: list[str]) -> int:
 
 
 def _run_ask(argv: list[str]) -> int:
-    args = _ask_parser().parse_args(argv)
+    parser = _ask_parser()
+    args = parser.parse_args(argv)
+    if args.system_file is None:
+        if len(args.rest) < 2:
+            parser.error("the following arguments are required: SYSTEM, QUESTION")
+        system, question = args.rest[0], args.rest[1:]
+    else:
+        if not args.rest:
+            parser.error("the following arguments are required: QUESTION")
+        system, question = _read_system_file(args.system_file), args.rest
     api_key = _read_api_key()
-    prompt = _resolve_prompt(args.question)
+    prompt = _resolve_prompt(question)
     if not prompt:
         raise GeminiError("The question is empty.", "no prompt")
     if args.verbose:
         print(f"model: {args.model}", file=sys.stderr)
-    _stream_reply(api_key, args.model, args.system, prompt, args.thinking, args.copy, args.verbose)
+    _stream_reply(api_key, args.model, system, prompt, args.thinking, args.copy, args.verbose)
     return 0
 
 

@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
-- **Command-line mode** (`cli.sh`, `cli.py`): send one prompt without opening a window and stream the reply to stdout. Gem mode uses a Gem from the config. `ask MODEL SYSTEM QUESTION` calls the Gemini API with only the API key. `models` lists the models the key can use, cached for 24 h. Prompts come from arguments or stdin, and replies can be copied to the clipboard. `--version` prints the CLI's version.
+- **Command-line mode** (`cli.sh`, `cli.py`): send one prompt without opening a window and stream the reply to stdout. Gem mode uses a Gem from the config. `ask MODEL SYSTEM QUESTION` calls the Gemini API with only the API key, with the system instruction as an argument or from a file (`--system-file`). `models` lists the models the key can use, cached for 24 h. Prompts come from arguments or stdin, and replies can be copied to the clipboard. `--version` prints the CLI's version.
 - **App icon** for the dash: a gem in the Gemini colors with the Gemini sparkle. `data/install.sh` installs it with a launcher entry.
 - The app icon in the top-left corner of the main window, left of the Gem dropdown. The window is 40 px wider (680 px) to make room.
 - A 500 ms shine sweeps diagonally across the header icon once the window has fully appeared (100 ms after GNOME Shell's open animation ends), and again on each click of the icon.
