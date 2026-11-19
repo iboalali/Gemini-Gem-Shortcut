@@ -7,7 +7,8 @@ from typing import Callable, Iterator
 
 import httpx
 
-ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
+MODELS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
+ENDPOINT = MODELS_ENDPOINT + "/{model}:streamGenerateContent"
 
 # Ordered `thinkingLevel` values to try for each checkbox state. The first entry
 # is the preferred one; later entries are fallbacks for models that reject it
@@ -217,6 +218,49 @@ def _stream_once(
         # mid-stream), which is why it must not touch anything but the callback.
         if last_usage is not None and on_usage is not None:
             on_usage(last_usage)
+
+
+def list_models(api_key: str, timeout: float = DEFAULT_TIMEOUT) -> list[dict]:
+    """Every model the key can address that supports generateContent.
+
+    Each entry is the API's model resource (`name`, `displayName`,
+    `inputTokenLimit`, `outputTokenLimit`, ...), in the order the API lists them.
+    Embedding-only and other models that can't answer a prompt are left out.
+    """
+    if not api_key:
+        raise GeminiError("API key is not set.", "no API key")
+
+    models: list[dict] = []
+    params: dict = {"pageSize": 1000}
+    try:
+        with httpx.Client(timeout=httpx.Timeout(timeout, connect=CONNECT_TIMEOUT)) as client:
+            while True:
+                r = client.get(
+                    MODELS_ENDPOINT, headers={"x-goog-api-key": api_key}, params=params
+                )
+                if r.status_code != 200:
+                    raise GeminiError(
+                        _format_http_error(r.status_code, r.text),
+                        _http_reason(r.status_code, r.text),
+                    )
+                page = r.json()
+                models.extend(
+                    m for m in page.get("models", [])
+                    if "generateContent" in m.get("supportedGenerationMethods", [])
+                )
+                token = page.get("nextPageToken")
+                if not token:
+                    return models
+                params["pageToken"] = token
+    except httpx.ConnectTimeout as e:
+        raise GeminiError(
+            f"Could not reach Google within {CONNECT_TIMEOUT:.0f} s. Check the network.",
+            "can't reach Google",
+        ) from e
+    except httpx.HTTPError as e:
+        raise GeminiError(f"Network error: {e}", "network error") from e
+    except ValueError as e:
+        raise GeminiError(f"Unreadable model list from Google: {e}", "bad response") from e
 
 
 def _extract_text(chunk: dict) -> str:
