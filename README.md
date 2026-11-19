@@ -122,7 +122,7 @@ Link `cli.sh` into `~/.local/bin`, from the project directory:
 
 ```bash
 ln -sfn "$(pwd)/cli.sh" ~/.local/bin/gemini-gem
-gemini-gem --version   # prints "gemini-gem 0.1.0"
+gemini-gem --version   # prints "gemini-gem 0.2.0"
 ```
 
 The link points at this checkout, so `git pull` updates the command, and moving the project folder needs the `ln` again. `cli.sh` finds the project's `.venv` through the link, so the command works from any directory. On Ubuntu, `~/.profile` puts `~/.local/bin` on `PATH` at login if the folder existed then. If `command -v gemini-gem` prints nothing, log out and in once. The examples below use `gemini-gem`; `./cli.sh` from the project directory works the same.
@@ -183,14 +183,44 @@ gemini-gem models --refresh  # skip the cache
 
 It lists every model the key can call `generateContent` on, which is what `ask` uses. Embedding-only models are left out. The answer is cached for 24 h in `~/.cache/gemini-gem-shortcut/models.json`. The cache stores a hash of the API key, not the key, and a different key fetches a fresh list. When the API can't be reached, the CLI shows the last cached list with a warning. Being listed doesn't mean a model works on your plan: on a free key, some listed models fail with `HTTP 429 … limit: 0` (see [Known limitations](#known-limitations--future-work)).
 
-### Options and behavior for all modes
+### Options and behavior for Gem mode and `ask`
 
 - `-c`, `--copy`: also copy the full reply to the clipboard with `wl-copy`.
 - `-v`, `--verbose`: print the model (and Gem) and the reply's token count to stderr.
+- `--json`: print one JSON object instead of streaming text. See below.
+- `-t`, `--timeout SECONDS`: give up when the reply is not complete after SECONDS, counted from the start of the request, and exit with 124. Without it, the only limits are 10 s to connect and 60 s without any data, so a long reply can run for minutes.
 
 `gemini-gem --version` prints `gemini-gem 0.1.0` and exits 0. It makes no network call and reads no config, so it is a cheap check that the CLI and its venv work.
 
-Stdin is read only when there is no prompt argument or an argument is `-`, so a script whose stdin never closes does not hang. While waiting for the first token, a status line ("connecting…", "waiting for the model…") appears on stderr when stderr is a terminal. Errors go to stderr with exit code 1, usage errors exit with 2, and Ctrl+C exits with 130. Tokens are added to the same daily usage totals as the window, including those of a reply cut off by Ctrl+C.
+Stdin is read only when there is no prompt argument or an argument is `-`, so a script whose stdin never closes does not hang. While waiting for the first token, a status line ("connecting…", "waiting for the model…") appears on stderr when stderr is a terminal. Tokens are added to the same daily usage totals as the window, including those of a reply cut off by Ctrl+C or the timeout.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | The reply is complete |
+| 1 | Any other failure: API error, missing or rejected key, unknown model, rate limit, empty reply, unreadable system file |
+| 2 | Usage error: missing argument, unknown option, bad `--timeout` value |
+| 124 | `--timeout` ran out |
+| 130 | Ctrl+C |
+
+Errors are printed to stderr as `error: <message>`. A message from Google can span several lines, as a 429 does.
+
+#### JSON output
+
+With `--json`, nothing is streamed. When the call ends, stdout gets exactly one JSON object on one line, for success and for every failure with exit code 1 or 124:
+
+```json
+{"ok": true, "model": "gemini-3.5-flash-lite", "text": "The quick brown fox", "usage": {"promptTokenCount": 21, "candidatesTokenCount": 5, "totalTokenCount": 26}, "error": null}
+{"ok": false, "model": "gemini-4-argon", "text": "", "usage": null, "error": {"message": "HTTP 429: You exceeded your current quota…", "reason": "not on your plan", "status": 429}}
+```
+
+- `text`: the reply. On a failure, the part that arrived before it, often `""`.
+- `usage`: the API's `usageMetadata` for the reply, or `null` when none arrived.
+- `error.reason`: a short phrase, for example `model overloaded`, `rate limit reached, retry in 14h18m24s`, `not on your plan`, `API key rejected`, `model not found`, `timed out`, `empty reply`, `no API key`.
+- `error.status`: the HTTP status when Google answered with an error, otherwise `null`.
+
+The `error:` line still goes to stderr as well. Usage errors (exit 2) and Ctrl+C print no JSON.
 
 
 *Note on `--copy`:* GNOME does not support the Wayland protocol that lets a background tool set the clipboard. `wl-copy` works around that by opening a 1×1 window and waiting for focus, and GNOME does not focus it when it is started from a script. The reply is still printed, `--copy` then prints a warning after 5 s and the exit code stays 0.

@@ -39,11 +39,15 @@ class GeminiError(RuntimeError):
     """Raised when the API returns an error or the response can't be parsed.
 
     `reason` is a few words fit for a status line; the message has the detail.
+    `status` is the HTTP status code when the API answered with an error.
     """
 
-    def __init__(self, message: str, reason: str | None = None) -> None:
+    def __init__(
+        self, message: str, reason: str | None = None, status: int | None = None
+    ) -> None:
         super().__init__(message)
         self.reason = reason or message
+        self.status = status
 
 
 def stream_generate(
@@ -168,6 +172,7 @@ def _stream_once(
                 raise GeminiError(
                     _format_http_error(r.status_code, detail),
                     _http_reason(r.status_code, detail),
+                    r.status_code,
                 )
 
             for line in r.iter_lines():
@@ -242,6 +247,7 @@ def list_models(api_key: str, timeout: float = DEFAULT_TIMEOUT) -> list[dict]:
                     raise GeminiError(
                         _format_http_error(r.status_code, r.text),
                         _http_reason(r.status_code, r.text),
+                        r.status_code,
                     )
                 page = r.json()
                 models.extend(

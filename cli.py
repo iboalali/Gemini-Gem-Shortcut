@@ -12,10 +12,12 @@ into the same store as the window's.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -26,11 +28,14 @@ import gemini_client
 import usage
 from gemini_client import GeminiError
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "gemini-gem-shortcut"
 MODELS_CACHE_PATH = CACHE_DIR / "models.json"
 MODELS_CACHE_TTL = 24 * 60 * 60
+
+# Same code as coreutils' `timeout`, so callers can tell a timeout from other failures.
+EXIT_TIMEOUT = 124
 
 _STATUS_TEXT = {
     gemini_client.CONNECTING: "connecting…",
@@ -39,6 +44,16 @@ _STATUS_TEXT = {
 
 
 # ── argument parsing ────────────────────────────────────────────────────
+
+
+def _positive_seconds(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        value = 0.0
+    if not value > 0:
+        raise argparse.ArgumentTypeError(f"must be a number of seconds above 0, not {text!r}")
+    return value
 
 
 def _add_reply_options(parser: argparse.ArgumentParser, thinking_help: str) -> None:
@@ -50,6 +65,18 @@ def _add_reply_options(parser: argparse.ArgumentParser, thinking_help: str) -> N
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="print the model and token usage to stderr"
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print one JSON object with the reply, token usage or error, instead of streaming text",
+    )
+    parser.add_argument(
+        "-t",
+        "--timeout",
+        type=_positive_seconds,
+        metavar="SECONDS",
+        help=f"give up when the reply is not complete after SECONDS (exit {EXIT_TIMEOUT})",
     )
 
 
@@ -244,18 +271,50 @@ class _StatusLine:
             self.shown = False
 
 
+class _TimedOut(GeminiError):
+    exit_code = EXIT_TIMEOUT
+
+
+class _DeadlineExceeded(BaseException):
+    """Raised by SIGALRM. A BaseException so no `except Exception` on the way swallows it."""
+
+
+@contextlib.contextmanager
+def _deadline(seconds: float | None):
+    if seconds is None:
+        yield
+        return
+
+    def fire(_signum: int, _frame: object) -> None:
+        raise _DeadlineExceeded()
+
+    previous = signal.signal(signal.SIGALRM, fire)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    except _DeadlineExceeded:
+        raise _TimedOut(f"No complete reply within {seconds:g} s.", "timed out") from None
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def _stream_reply(
     api_key: str,
     model: str,
     system_instruction: str,
     prompt: str,
     thinking: bool | None,
-    copy: bool,
-    verbose: bool,
-) -> None:
+    args: argparse.Namespace,
+    reply: list[str],
+    usage_meta: dict,
+) -> str:
+    """Stream one reply. Without --json each delta goes to stdout as it arrives.
+
+    `reply` and `usage_meta` are filled in place, so a caller still has the
+    partial text and the token counts when this raises.
+    """
     status = _StatusLine()
-    usage_meta: dict = {}
-    reply: list[str] = []
     stream = gemini_client.stream_generate(
         api_key,
         model,
@@ -266,13 +325,16 @@ def _stream_reply(
         on_status=status,
     )
     try:
-        for delta in stream:
-            status.clear()
-            reply.append(delta)
-            sys.stdout.write(delta)
-            sys.stdout.flush()
+        with _deadline(args.timeout):
+            for delta in stream:
+                status.clear()
+                reply.append(delta)
+                if not args.json:
+                    sys.stdout.write(delta)
+                    sys.stdout.flush()
     finally:
-        # Closing fires on_usage for a reply cut off by Ctrl+C; those tokens are billed too.
+        # Closing fires on_usage for a reply cut off by Ctrl+C or the timeout;
+        # those tokens are billed too.
         stream.close()
         status.clear()
         _record_usage(model, usage_meta)
@@ -280,14 +342,51 @@ def _stream_reply(
     text = "".join(reply)
     if not text:
         raise GeminiError("The model returned an empty reply.", "empty reply")
-    if not text.endswith("\n"):
-        sys.stdout.write("\n")
+    if not args.json:
+        if not text.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    if args.copy:
+        _copy_to_clipboard(text)
+    if args.verbose and usage_meta:
+        print(usage.format_response(usage_meta), file=sys.stderr)
+    return text
+
+
+def _print_json(model: str, text: str, usage_meta: dict, error: GeminiError | None) -> None:
+    result = {
+        "ok": error is None,
+        "model": model,
+        "text": text,
+        "usage": usage_meta or None,
+        "error": None
+        if error is None
+        else {"message": str(error), "reason": error.reason, "status": error.status},
+    }
+    json.dump(result, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
     sys.stdout.flush()
 
-    if copy:
-        _copy_to_clipboard(text)
-    if verbose and usage_meta:
-        print(usage.format_response(usage_meta), file=sys.stderr)
+
+def _respond(args: argparse.Namespace, request: dict, produce) -> int:
+    """Run `produce(reply, usage_meta)` and, with --json, report its outcome as one object.
+
+    `request["model"]` names the model in that object; `produce` may set it once
+    it knows. The error still propagates, so main() prints it to stderr and
+    picks the exit code.
+    """
+    reply: list[str] = []
+    usage_meta: dict = {}
+    try:
+        text = produce(reply, usage_meta)
+    except GeminiError as e:
+        if args.json:
+            _print_json(request["model"], "".join(reply), usage_meta, e)
+        raise
+    if args.json:
+        _print_json(request["model"], text, usage_meta, None)
+    return 0
 
 
 # ── Gem mode ────────────────────────────────────────────────────────────
@@ -328,22 +427,27 @@ def _run_gem(argv: list[str]) -> int:
         print(usage.summary(usage.load()))
         return 0
 
-    gem = _pick_gem(cfg, args.gem)
-    model = _pick_model(cfg, gem, args.model)
-    prompt = _resolve_prompt(args.prompt)
-    thinking = bool(gem.get("thinking", False)) if args.thinking is None else args.thinking
-    if args.verbose:
-        print(f"gem: {gem.get('name', '')}, model: {model}", file=sys.stderr)
-    _stream_reply(
-        cfg.get("api_key", ""),
-        model,
-        gem.get("system_instruction", ""),
-        prompt,
-        thinking,
-        args.copy,
-        args.verbose,
-    )
-    return 0
+    request = {"model": args.model or ""}
+
+    def produce(reply: list[str], usage_meta: dict) -> str:
+        gem = _pick_gem(cfg, args.gem)
+        model = request["model"] = _pick_model(cfg, gem, args.model)
+        prompt = _resolve_prompt(args.prompt)
+        thinking = bool(gem.get("thinking", False)) if args.thinking is None else args.thinking
+        if args.verbose:
+            print(f"gem: {gem.get('name', '')}, model: {model}", file=sys.stderr)
+        return _stream_reply(
+            cfg.get("api_key", ""),
+            model,
+            gem.get("system_instruction", ""),
+            prompt,
+            thinking,
+            args,
+            reply,
+            usage_meta,
+        )
+
+    return _respond(args, request, produce)
 
 
 # ── ask ─────────────────────────────────────────────────────────────────
@@ -355,19 +459,25 @@ def _run_ask(argv: list[str]) -> int:
     if args.system_file is None:
         if len(args.rest) < 2:
             parser.error("the following arguments are required: SYSTEM, QUESTION")
-        system, question = args.rest[0], args.rest[1:]
+        system_arg, question = args.rest[0], args.rest[1:]
     else:
         if not args.rest:
             parser.error("the following arguments are required: QUESTION")
-        system, question = _read_system_file(args.system_file), args.rest
-    api_key = _read_api_key()
-    prompt = _resolve_prompt(question)
-    if not prompt:
-        raise GeminiError("The question is empty.", "no prompt")
-    if args.verbose:
-        print(f"model: {args.model}", file=sys.stderr)
-    _stream_reply(api_key, args.model, system, prompt, args.thinking, args.copy, args.verbose)
-    return 0
+        system_arg, question = None, args.rest
+
+    def produce(reply: list[str], usage_meta: dict) -> str:
+        system = system_arg if system_arg is not None else _read_system_file(args.system_file)
+        api_key = _read_api_key()
+        prompt = _resolve_prompt(question)
+        if not prompt:
+            raise GeminiError("The question is empty.", "no prompt")
+        if args.verbose:
+            print(f"model: {args.model}", file=sys.stderr)
+        return _stream_reply(
+            api_key, args.model, system, prompt, args.thinking, args, reply, usage_meta
+        )
+
+    return _respond(args, {"model": args.model}, produce)
 
 
 # ── models ──────────────────────────────────────────────────────────────
@@ -453,7 +563,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run_gem(argv)
     except GeminiError as e:
         print(f"error: {e}", file=sys.stderr)
-        return 1
+        return getattr(e, "exit_code", 1)
     except KeyboardInterrupt:
         return 130
 
