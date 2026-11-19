@@ -190,7 +190,7 @@ It lists every model the key can call `generateContent` on, which is what `ask` 
 - `--json`: print one JSON object instead of streaming text. See below.
 - `-t`, `--timeout SECONDS`: give up when the reply is not complete after SECONDS, counted from the start of the request, and exit with 124. Without it, the only limits are 10 s to connect and 60 s without any data, so a long reply can run for minutes.
 
-`gemini-gem --version` prints `gemini-gem 0.1.0` and exits 0. It makes no network call and reads no config, so it is a cheap check that the CLI and its venv work.
+`gemini-gem --version` prints `gemini-gem 0.2.0` and exits 0. It makes no network call and reads no config, so it is a cheap check that the CLI and its venv work.
 
 Stdin is read only when there is no prompt argument or an argument is `-`, so a script whose stdin never closes does not hang. While waiting for the first token, a status line ("connecting…", "waiting for the model…") appears on stderr when stderr is a terminal. Tokens are added to the same daily usage totals as the window, including those of a reply cut off by Ctrl+C or the timeout.
 
